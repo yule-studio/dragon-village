@@ -217,16 +217,28 @@ def open_dialog():
 
 
 def save():
-    """레벨업 다이얼로그 → 메뉴 → 설정 → 저장 → 다이얼로그 복귀"""
-    log("  저장 진행")
-    tap(T_DLG_X); time.sleep(2)      # 다이얼로그 닫기 → 용 패널
-    tap(T_MENU); time.sleep(2)       # 용 패널 닫기
-    tap(T_MENU); time.sleep(2)       # 메뉴 열기
-    tap(T_SETTINGS); time.sleep(3)
+    """레벨업 다이얼로그 → 메뉴 → 설정 → 저장 → 다이얼로그 복귀
 
-    ok, s, d = dvguard.is_settings_open()
+    메뉴 토글은 직전 화면 상태(용 패널 열림 / 맵 오버레이 떠 있음)에 따라
+    한 번 더 눌러야 할 때가 있다. 눈으로 확인할 수 없으므로 이미 검증된
+    is_settings_open() 을 게이트로 삼아 최대 3회 재시도한다.
+    """
+    log("  저장 진행")
+
+    tap(T_DLG_X); time.sleep(2)                 # 레벨업 다이얼로그 닫기
+    if is_levelup_dialog():                     # 안 닫혔으면 한 번 더
+        tap(T_DLG_X); time.sleep(2)
+
+    ok = False
+    for attempt in range(1, 4):
+        tap(T_MENU); time.sleep(2)
+        tap(T_SETTINGS); time.sleep(3)
+        ok, s, d = dvguard.is_settings_open()
+        if ok:
+            break
+        log(f"    설정창 미확인 ({attempt}/3) 저장={s} 삭제={d} — 재시도")
     if not ok:
-        abort(f"설정창 검증 실패 저장={s} 삭제={d}", "settings")
+        abort(f"설정창 검증 3회 실패 저장={s} 삭제={d}", "settings")
 
     x, y = dvguard.SAVE_SAFE_TAP
     tap((x, y)); time.sleep(3)
