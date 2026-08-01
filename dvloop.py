@@ -12,10 +12,11 @@
   - 예상과 다른 화면이면 즉시 중단하고 스크린샷을 남긴다 (임의로 탭하지 않는다)
 """
 
+import argparse
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import dvguard
 
@@ -24,7 +25,6 @@ SHOTS = "/Users/masterway/dragonvillage/screens"
 LOG = "/Users/masterway/dragonvillage/loop_log.txt"
 
 # --- 좌표 ---
-T_ITEM = (1305, 486)        # 각성 Lv+1 아이템
 T_LEVELUP = (1416, 930)     # 레벨 업 버튼
 T_ITEM_OK = (997, 786)      # 아이템 사용 확인
 T_RESULT_OK = (1170, 827)   # LEVEL UP! 결과 확인
@@ -34,8 +34,19 @@ T_SETTINGS = (1974, 641)
 T_SAVE_OK = (1170, 663)     # 저장완료 확인
 T_SET_X = (1647, 87)        # 설정창 닫기
 T_PANEL = (368, 977)        # 하단 용 카드
-T_DRAGON = (1076, 345)      # 번개고룡 슬롯
 T_NOTICE_CLOSE = (1170, 1013)
+
+# 용 목록 슬롯 (스크롤 없이 보이는 5칸). 6번째 이후는 미지원
+DRAGON_SLOTS = {1: (1076, 164), 2: (1076, 345), 3: (1076, 523),
+                4: (1076, 702), 5: (1076, 883)}
+
+# 아이템 목록 슬롯 (스크롤 없이 보이는 3칸)
+ITEM_SLOTS = {1: (1305, 193), 2: (1305, 486), 3: (1305, 772)}
+
+# 실행 인자로 채워진다
+T_DRAGON = DRAGON_SLOTS[2]  # 기본: 번개고룡
+T_ITEM = ITEM_SLOTS[2]      # 기본: 각성 Lv+1
+STOP_AT = None              # datetime — 이 시각이 지나면 사이클 경계에서 정지
 
 # 로그인
 T_START = (1170, 540)
@@ -252,13 +263,49 @@ def cycle(n):
     return win
 
 
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="드래곤빌리지 데삭 루프",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    # 기존 위치 인자 호환: <최대사이클> [목표레벨수] [현재레벨]
+    p.add_argument("max_cycles", nargs="?", type=int, default=10)
+    p.add_argument("target", nargs="?", type=int, default=14,
+                   help="올릴 레벨 수 (성공 횟수)")
+    p.add_argument("base", nargs="?", type=int, default=31, help="현재 레벨")
+    p.add_argument("--dragon-slot", type=int, default=2,
+                   choices=sorted(DRAGON_SLOTS), help="용 목록 슬롯")
+    p.add_argument("--item-slot", type=int, default=2,
+                   choices=sorted(ITEM_SLOTS), help="아이템 목록 슬롯")
+    p.add_argument("--name", default="번개고룡", help="로그 표시용 대상 이름")
+    p.add_argument("--until", metavar="HH:MM",
+                   help="이 시각이 지나면 사이클 경계에서 정지")
+    return p.parse_args()
+
+
+def resolve_stop_at(hhmm):
+    if not hhmm:
+        return None
+    h, m = (int(x) for x in hhmm.split(":"))
+    now = datetime.now()
+    t = now.replace(hour=h, minute=m, second=0, microsecond=0)
+    if t <= now:
+        t += timedelta(days=1)
+    return t
+
+
 def main():
-    max_cycles = int(sys.argv[1]) if len(sys.argv) > 1 else 10
-    target = int(sys.argv[2]) if len(sys.argv) > 2 else 14
-    base = int(sys.argv[3]) if len(sys.argv) > 3 else 31   # 현재 레벨
+    global T_DRAGON, T_ITEM, STOP_AT
+    a = parse_args()
+    max_cycles, target, base = a.max_cycles, a.target, a.base
+    T_DRAGON = DRAGON_SLOTS[a.dragon_slot]
+    T_ITEM = ITEM_SLOTS[a.item_slot]
+    STOP_AT = resolve_stop_at(a.until)
 
     log("=" * 60)
-    log(f"루프 시작: 최대 {max_cycles}사이클 / 목표 {target}레벨 상승")
+    log(f"루프 시작: {a.name} Lv.{base} → Lv.{base + target}")
+    log(f"  용 슬롯 {a.dragon_slot}{T_DRAGON} / 아이템 슬롯 {a.item_slot}{T_ITEM}")
+    log(f"  최대 {max_cycles}사이클" +
+        (f" / {STOP_AT:%H:%M} 까지" if STOP_AT else ""))
     log("토큰: 이 루프는 Claude 개입 없이 자율 실행된다 → 사이클당 토큰 소모 0")
     log("      Claude 토큰은 감독/보고 턴에서만 발생. 정확한 수치는 /cost 로 확인.")
 
@@ -268,7 +315,11 @@ def main():
 
     wins = 0
     t0 = time.time()
+    n = 0
     for n in range(1, max_cycles + 1):
+        if STOP_AT and datetime.now() >= STOP_AT:
+            log(f"지정 시각({STOP_AT:%H:%M}) 도달 — 정지")
+            break
         if cycle(n):
             wins += 1
             log(f"  누적 성공 {wins}/{target}  (Lv.{base + wins})")
