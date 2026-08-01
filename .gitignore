@@ -1,0 +1,9 @@
+# 런타임 산출물 — 실행할 때마다 쌓이므로 저장소에 넣지 않는다
+screens/SUCCESS_*.png
+screens/ABORT_*.png
+screens/cycle_*.png
+loop_log.txt
+loop_run*.out
+*.pyc
+__pycache__/
+.DS_Store
