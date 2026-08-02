@@ -66,7 +66,8 @@ class LoopService : Service() {
             runCatching { engine.run() }
                 .onFailure { log("!! 예외: ${it.message}") }
             ScreenCapture.stop()
-            LoopStatus.update(LoopStatus.current.copy(running = false))
+            // phase 를 남겨두면 멈춘 뒤에도 '데삭 중' 처럼 보인다.
+            LoopStatus.update(LoopStatus.current.copy(running = false, phase = "idle"))
             FloatingService.refresh(applicationContext)
             stopSelf()
         }

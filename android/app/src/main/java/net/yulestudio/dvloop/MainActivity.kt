@@ -23,6 +23,10 @@ class MainActivity : ComponentActivity() {
 
     private var pendingSetup: LoopSetup? = null
 
+    // 미니창의 '재시작' 을 받아 처리하려면 화면 밖에서도 설정을 읽어야 한다.
+    private val repo by lazy { DexRepository(applicationContext) }
+    private val prefs by lazy { LoopPrefs(applicationContext) }
+
     /** 화면 캡처 허용을 받아 루프를 시작한다. 매번 사용자가 눌러야 한다. */
     private val captureLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -41,9 +45,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val repo = DexRepository(applicationContext)
         val creds = Credentials(applicationContext)
-        val prefs = LoopPrefs(applicationContext)
 
         setContent {
             MaterialTheme {
@@ -124,6 +126,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         FloatingService.stop(this)
+        // 미니창에서 '재시작' 을 눌러 넘어온 경우. 화면 캡처 허용은 여기서만 받을 수 있다.
+        if (LoopStatus.consumeResume() && !LoopStatus.current.running) {
+            prefs.restore(repo)?.let { startLoop(it) }
+                ?: LoopService.log("이어서 시작할 설정이 없다")
+        }
     }
 
     /** 앱을 벗어났는데 루프가 돌고 있으면 미니창으로 이어 붙인다. */

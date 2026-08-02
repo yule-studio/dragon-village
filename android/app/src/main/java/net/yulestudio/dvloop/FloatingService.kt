@@ -43,6 +43,7 @@ class FloatingService : Service() {
     private lateinit var bubbleLabel: TextView
     private lateinit var titleText: TextView
     private lateinit var statText: TextView
+    private lateinit var primaryButton: TextView
 
     private var expanded = false
 
@@ -126,10 +127,17 @@ class FloatingService : Service() {
             setPadding(dp(14), dp(4), dp(14), dp(12))
         }
 
+        // 왼쪽 버튼은 상태에 따라 바뀐다: 돌고 있으면 [정지], 멈췄으면 [재시작].
+        // 멈춘 뒤에 [정지] 만 남아 있으면 미니창에서 할 수 있는 게 없다.
+        primaryButton = actionButton("정지", "#F04452") {
+            if (LoopStatus.current.running) LoopStatus.requestStop() else LoopStatus.requestResume()
+            if (!LoopStatus.current.running && LoopStatus.resumeRequested) openApp() else render()
+        }
+
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(12), 0, dp(4), dp(14))
-            addView(actionButton("정지", "#F04452") { LoopStatus.requestStop(); render() })
+            addView(primaryButton)
             addView(actionButton("앱으로", "#3182F6") { openApp() })
         }
 
@@ -241,6 +249,10 @@ class FloatingService : Service() {
 
     private fun render() {
         val s = LoopStatus.current
+        primaryButton.text = if (s.running) "정지" else "재시작"
+        (primaryButton.background as GradientDrawable).setColor(
+            Color.parseColor(if (s.running) "#F04452" else "#00A661")
+        )
         bubbleLabel.text = if (s.running) "Lv.${s.level}" else "정지"
         titleText.text = "${s.target} · ${s.stage}"
         val phase = when (s.phase) {
@@ -346,13 +358,35 @@ object LoopStatus {
     var stopRequested = false
         private set
 
+    /**
+     * 미니창에서 누른 '재시작'.
+     *
+     * 화면 캡처 허용은 액티비티만 받을 수 있어서 여기서 바로 다시 돌릴 수 없다.
+     * 깃발만 세워두고, 앱이 앞으로 나오면 그때 이어서 시작한다.
+     */
+    @Volatile
+    var resumeRequested = false
+        private set
+
     fun update(s: Snapshot) {
         current = s
     }
 
     fun requestStop() {
         stopRequested = true
-        current = current.copy(running = false)
+        // 멈췄는데 '데삭 중' 이 남아 있으면 아직 도는 것처럼 보인다.
+        current = current.copy(running = false, phase = "idle")
+    }
+
+    fun requestResume() {
+        resumeRequested = true
+    }
+
+    /** 한 번만 쓰고 내린다. */
+    fun consumeResume(): Boolean {
+        if (!resumeRequested) return false
+        resumeRequested = false
+        return true
     }
 
     fun clearStop() {
