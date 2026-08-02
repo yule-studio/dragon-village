@@ -7,3 +7,6 @@ loop_run*.out
 *.pyc
 __pycache__/
 .DS_Store
+data/*.db
+data/*.db-journal
+data/*.log
