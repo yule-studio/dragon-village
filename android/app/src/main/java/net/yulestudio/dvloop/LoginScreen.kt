@@ -35,11 +35,7 @@ import androidx.compose.ui.unit.sp
  * 설계 기준(토스): 한 화면에 한 가지 일만. 큰 글씨, 큰 버튼, 군더더기 없는 문구.
  */
 
-private val Blue = Color(0xFF3182F6)
-private val Ink = Color(0xFF191F28)
-private val Gray = Color(0xFF8B95A1)
-private val Line = Color(0xFFE5E8EB)
-private val Field = Color(0xFFF2F4F6)
+// 색상은 SetupFlow.kt 에 공용으로 둔다
 
 @Composable
 fun LoginScreen(

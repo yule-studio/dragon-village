@@ -4,6 +4,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
@@ -12,30 +13,34 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.abs
+import kotlin.math.hypot
 
 /**
- * 화면 위에 떠 있는 미니 제어창 (카카오톡 미니창과 같은 방식).
+ * 화면 위에 떠 있는 미니 제어창. 카카오톡 미니창과 같은 조작을 따른다.
  *
- * 루프가 도는 동안 게임이 화면을 차지하므로, 앱으로 돌아가지 않고도
- * 진행 상황을 보고 멈출 수 있어야 한다.
+ *   접힘    동그란 버블. 끌어서 옮긴다.
+ *   끄는 중  화면 아래에 '✕ 닫기' 가 나타나고, 그 위에 놓으면 사라진다.
+ *   펼침    카드 창. 머리줄에 [—] 접기 · [⤢] 앱으로 · [✕] 닫기
  *
- * 접힌 상태: 현재 레벨만 보여주는 작은 버블. 드래그로 옮길 수 있다.
- * 펼친 상태: 대상 · 레벨 · 사이클 · 성공률 + [정지] [닫기]
- *
- * 오버레이 권한(다른 앱 위에 표시)이 필요하다.
+ * 루프가 도는 동안 게임이 화면을 차지하므로,
+ * 앱으로 돌아가지 않고도 진행 상황을 보고 멈출 수 있어야 한다.
  */
 class FloatingService : Service() {
 
     private lateinit var wm: WindowManager
-    private lateinit var root: LinearLayout
-    private lateinit var params: WindowManager.LayoutParams
 
-    private lateinit var bubbleText: TextView
-    private lateinit var panel: LinearLayout
+    private lateinit var bubble: LinearLayout
+    private lateinit var bubbleParams: WindowManager.LayoutParams
+    private lateinit var card: LinearLayout
+    private lateinit var cardParams: WindowManager.LayoutParams
+    private lateinit var closeZone: TextView
+    private lateinit var closeZoneParams: WindowManager.LayoutParams
+
+    private lateinit var bubbleLabel: TextView
     private lateinit var titleText: TextView
     private lateinit var statText: TextView
 
@@ -46,163 +51,274 @@ class FloatingService : Service() {
     override fun onCreate() {
         super.onCreate()
         wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        buildView()
-        addToWindow()
-        render(LoopStatus.current)
+        buildBubble()
+        buildCard()
+        buildCloseZone()
+        render()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        intent?.let {
-            if (it.hasExtra(EXTRA_STATUS)) render(LoopStatus.current)
-        }
+        render()
         return START_STICKY
     }
-
-    // ---------- 뷰 구성 ----------
 
     private fun dp(v: Int) = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), resources.displayMetrics
     ).toInt()
 
-    private fun buildView() {
-        root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(18).toFloat()
-                setColor(Color.parseColor("#EE191F28"))
-            }
-        }
-
-        bubbleText = TextView(this).apply {
-            setTextColor(Color.WHITE)
-            textSize = 15f
-            text = "루프"
-        }
-        root.addView(bubbleText)
-
-        panel = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            setPadding(0, dp(10), 0, 0)
-        }
-        titleText = TextView(this).apply {
-            setTextColor(Color.WHITE); textSize = 13f
-        }
-        statText = TextView(this).apply {
-            setTextColor(Color.parseColor("#8B95A1")); textSize = 12f
-            setPadding(0, dp(4), 0, dp(10))
-        }
-        panel.addView(titleText)
-        panel.addView(statText)
-
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row.addView(actionButton("정지", "#F04452") {
-            LoopStatus.requestStop()
-            render(LoopStatus.current)
-        })
-        row.addView(actionButton("닫기", "#333D4B") { stopSelf() })
-        panel.addView(row)
-
-        root.addView(panel)
-        root.setOnClickListener { toggle() }
-        root.setOnTouchListener(DragHandler())
-    }
-
-    private fun actionButton(label: String, color: String, onClick: () -> Unit) =
-        Button(this).apply {
-            text = label
-            textSize = 13f
-            setTextColor(Color.WHITE)
-            isAllCaps = false
-            background = GradientDrawable().apply {
-                cornerRadius = dp(10).toFloat()
-                setColor(Color.parseColor(color))
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(76), dp(38))
-                .apply { marginEnd = dp(8) }
-            setOnClickListener { onClick() }
-        }
-
-    private fun addToWindow() {
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+    private fun overlayType() =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         else
             @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
-        params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            type,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            android.graphics.PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = dp(12)
-            y = dp(120)
+    private fun params(w: Int, h: Int) = WindowManager.LayoutParams(
+        w, h, overlayType(),
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+        PixelFormat.TRANSLUCENT,
+    ).apply { gravity = Gravity.TOP or Gravity.START }
+
+    // ---------- 버블 (접힘) ----------
+
+    private fun buildBubble() {
+        val icon = ImageView(this).apply {
+            setImageResource(R.mipmap.ic_launcher)
+            layoutParams = LinearLayout.LayoutParams(dp(32), dp(32))
         }
-        wm.addView(root, params)
+        bubbleLabel = TextView(this).apply {
+            setTextColor(Color.WHITE); textSize = 9f; gravity = Gravity.CENTER
+        }
+        bubble = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#F2191F28"))
+            }
+            addView(icon)
+            addView(bubbleLabel)
+            setOnClickListener { expand() }
+            setOnTouchListener(BubbleDrag())
+        }
+        bubbleParams = params(dp(58), dp(58)).apply { x = dp(16); y = dp(160) }
+        wm.addView(bubble, bubbleParams)
     }
 
-    private fun toggle() {
-        expanded = !expanded
-        panel.visibility = if (expanded) View.VISIBLE else View.GONE
-        render(LoopStatus.current)
+    // ---------- 카드 (펼침) ----------
+
+    private fun buildCard() {
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            setPadding(dp(8), dp(6), dp(8), dp(2))
+            addView(headerButton("—") { collapse() })
+            addView(headerButton("⤢") { openApp() })
+            addView(headerButton("✕") { stopSelf() })
+            setOnTouchListener(CardDrag())
+        }
+
+        titleText = TextView(this).apply {
+            setTextColor(Color.WHITE); textSize = 15f
+            setPadding(dp(14), 0, dp(14), 0)
+        }
+        statText = TextView(this).apply {
+            setTextColor(Color.parseColor("#8B95A1")); textSize = 12f
+            setPadding(dp(14), dp(4), dp(14), dp(12))
+        }
+
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(12), 0, dp(4), dp(14))
+            addView(actionButton("정지", "#F04452") { LoopStatus.requestStop(); render() })
+            addView(actionButton("앱으로", "#3182F6") { openApp() })
+        }
+
+        card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat()
+                setColor(Color.parseColor("#F5191F28"))
+            }
+            visibility = View.GONE
+            addView(header)
+            addView(titleText)
+            addView(statText)
+            addView(actions)
+        }
+        cardParams = params(dp(250), WindowManager.LayoutParams.WRAP_CONTENT)
+            .apply { x = dp(16); y = dp(160) }
+        wm.addView(card, cardParams)
     }
 
-    private fun render(s: LoopStatus.Snapshot) {
-        bubbleText.text = if (s.running) "Lv.${s.level}" else "정지됨"
-        titleText.text = "${s.target} · Lv.${s.level} → ${s.targetLevel}"
-        statText.text = "${s.cycle}회 시도 · 성공 ${s.wins}회" +
-            if (s.cycle > 0) " · ${s.wins * 100 / s.cycle}%" else ""
+    private fun headerButton(label: String, onClick: () -> Unit) = TextView(this).apply {
+        text = label
+        setTextColor(Color.parseColor("#C9CFD6"))
+        textSize = 15f
+        gravity = Gravity.CENTER
+        layoutParams = LinearLayout.LayoutParams(dp(34), dp(30))
+        setOnClickListener { onClick() }
     }
 
-    /** 버블을 손가락으로 끌어 옮긴다. 살짝 눌렀다 뗀 것은 탭으로 본다. */
-    private inner class DragHandler : View.OnTouchListener {
-        private var startX = 0
-        private var startY = 0
-        private var touchX = 0f
-        private var touchY = 0f
+    private fun actionButton(label: String, color: String, onClick: () -> Unit) =
+        TextView(this).apply {
+            text = label
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(Color.parseColor(color))
+            }
+            layoutParams = LinearLayout.LayoutParams(0, dp(40), 1f)
+                .apply { marginEnd = dp(8) }
+            setOnClickListener { onClick() }
+        }
+
+    // ---------- 닫기 영역 ----------
+
+    private fun buildCloseZone() {
+        closeZone = TextView(this).apply {
+            text = "✕   닫기"
+            setTextColor(Color.WHITE); textSize = 15f; gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                cornerRadius = dp(24).toFloat()
+                setColor(Color.parseColor("#E6191F28"))
+            }
+            visibility = View.GONE
+        }
+        closeZoneParams = params(dp(172), dp(56)).apply {
+            gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            y = dp(36)
+        }
+        wm.addView(closeZone, closeZoneParams)
+    }
+
+    private fun overCloseZone(): Boolean {
+        val loc = IntArray(2)
+        closeZone.getLocationOnScreen(loc)
+        val cx = loc[0] + closeZone.width / 2f
+        val cy = loc[1] + closeZone.height / 2f
+        val bx = bubbleParams.x + bubble.width / 2f
+        val by = bubbleParams.y + bubble.height / 2f
+        return hypot(bx - cx, by - cy) < dp(120)
+    }
+
+    // ---------- 상태 전환 ----------
+
+    private fun expand() {
+        expanded = true
+        cardParams.x = bubbleParams.x
+        cardParams.y = bubbleParams.y
+        wm.updateViewLayout(card, cardParams)
+        bubble.visibility = View.GONE
+        card.visibility = View.VISIBLE
+        render()
+    }
+
+    private fun collapse() {
+        expanded = false
+        bubbleParams.x = cardParams.x
+        bubbleParams.y = cardParams.y
+        wm.updateViewLayout(bubble, bubbleParams)
+        card.visibility = View.GONE
+        bubble.visibility = View.VISIBLE
+        render()
+    }
+
+    /**
+     * 루프 앱으로 돌아간다.
+     * 앱 자체가 메인 화면이므로 미니창은 사라진다.
+     * 앱을 벗어나고 루프가 돌고 있으면 MainActivity 가 다시 띄운다.
+     */
+    private fun openApp() {
+        startActivity(
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            }
+        )
+        stopSelf()
+    }
+
+    private fun render() {
+        val s = LoopStatus.current
+        bubbleLabel.text = if (s.running) "Lv.${s.level}" else "정지"
+        titleText.text = "${s.target} · ${s.stage}"
+        statText.text = buildString {
+            append("Lv.${s.level} → ${s.targetLevel}")
+            append("  ·  ${s.cycle}회 시도")
+            if (s.cycle > 0) append(" · 성공 ${s.wins}회")
+            if (!s.running) append("  (정지됨)")
+        }
+    }
+
+    // ---------- 드래그 ----------
+
+    /** 버블: 끌면 닫기 영역이 나타나고, 그 위에서 놓으면 종료한다. */
+    private inner class BubbleDrag : View.OnTouchListener {
+        private var sx = 0; private var sy = 0
+        private var tx = 0f; private var ty = 0f
         private var moved = false
 
         override fun onTouch(v: View, e: MotionEvent): Boolean {
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    startX = params.x; startY = params.y
-                    touchX = e.rawX; touchY = e.rawY
-                    moved = false
+                    sx = bubbleParams.x; sy = bubbleParams.y
+                    tx = e.rawX; ty = e.rawY; moved = false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = (e.rawX - touchX).toInt()
-                    val dy = (e.rawY - touchY).toInt()
-                    if (abs(dx) > dp(6) || abs(dy) > dp(6)) moved = true
-                    params.x = startX + dx
-                    params.y = startY + dy
-                    wm.updateViewLayout(root, params)
+                    val dx = (e.rawX - tx).toInt()
+                    val dy = (e.rawY - ty).toInt()
+                    if (!moved && (abs(dx) > dp(6) || abs(dy) > dp(6))) {
+                        moved = true
+                        closeZone.visibility = View.VISIBLE
+                    }
+                    bubbleParams.x = sx + dx
+                    bubbleParams.y = sy + dy
+                    wm.updateViewLayout(bubble, bubbleParams)
+                    if (moved) closeZone.alpha = if (overCloseZone()) 1f else 0.7f
                 }
-                MotionEvent.ACTION_UP -> if (!moved) v.performClick()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    closeZone.visibility = View.GONE
+                    if (!moved) v.performClick()
+                    else if (overCloseZone()) stopSelf()
+                }
             }
             return true
         }
     }
 
+    /** 카드: 머리줄을 잡고 옮긴다. */
+    private inner class CardDrag : View.OnTouchListener {
+        private var sx = 0; private var sy = 0
+        private var tx = 0f; private var ty = 0f
+
+        override fun onTouch(v: View, e: MotionEvent): Boolean {
+            when (e.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    sx = cardParams.x; sy = cardParams.y
+                    tx = e.rawX; ty = e.rawY
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    cardParams.x = sx + (e.rawX - tx).toInt()
+                    cardParams.y = sy + (e.rawY - ty).toInt()
+                    wm.updateViewLayout(card, cardParams)
+                }
+            }
+            return false   // 머리줄 버튼 탭은 그대로 살린다
+        }
+    }
+
     override fun onDestroy() {
-        if (::root.isInitialized) runCatching { wm.removeView(root) }
+        runCatching { wm.removeView(bubble) }
+        runCatching { wm.removeView(card) }
+        runCatching { wm.removeView(closeZone) }
         super.onDestroy()
     }
 
     companion object {
-        const val EXTRA_STATUS = "status"
-
-        fun start(ctx: Context) =
-            ctx.startService(Intent(ctx, FloatingService::class.java))
-
-        fun refresh(ctx: Context) = ctx.startService(
-            Intent(ctx, FloatingService::class.java).putExtra(EXTRA_STATUS, true)
-        )
-
-        fun stop(ctx: Context) =
-            ctx.stopService(Intent(ctx, FloatingService::class.java))
+        fun start(ctx: Context) = ctx.startService(Intent(ctx, FloatingService::class.java))
+        fun refresh(ctx: Context) = ctx.startService(Intent(ctx, FloatingService::class.java))
+        fun stop(ctx: Context) = ctx.stopService(Intent(ctx, FloatingService::class.java))
     }
 }
 
@@ -211,6 +327,7 @@ object LoopStatus {
     data class Snapshot(
         val running: Boolean = false,
         val target: String = "대상 없음",
+        val stage: String = "-",
         val level: Int = 0,
         val targetLevel: Int = 45,
         val cycle: Int = 0,
