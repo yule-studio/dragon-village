@@ -339,9 +339,18 @@ class LoopEngine(
             // 게임 밖 창이 올라왔는가 (재난문자 · 전화 · 다른 앱 알림)
             val pkg = a11y?.foregroundPackage()
             if (pkg != null && pkg != GAME_PKG && pkg != ctx.packageName) {
+                // 다이얼로그면 닫기 버튼으로 물러난다.
+                // 앱이 통째로 올라온 것이면 닫을 버튼이 없다 — 실제로 카카오톡이
+                // 올라온 채 '닫기 시도' 만 여덟 번 반복하다 멈췄다.
+                // 한 번 시도해서 안 물러나면 게임을 다시 앞으로 끌어온다.
                 onLog("    방해 창 감지: $pkg — 닫기 시도")
                 a11y?.dismissSystemDialog()
                 delay(2500)
+                if (a11y?.foregroundPackage() != GAME_PKG) {
+                    onLog("    안 물러난다 — 게임을 다시 앞으로")
+                    if (!ensureGameForeground()) return
+                    delay(3000)
+                }
                 return@repeat
             }
             val f = frame() ?: return
