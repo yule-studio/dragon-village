@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">드빌 매크로</string>
+    <string name="accessibility_label">드빌 매크로 화면 조작</string>
+    <string name="accessibility_description">게임 화면을 대신 눌러 레벨업 루프를 진행합니다. 다른 앱은 조작하지 않습니다.</string>
+</resources>
