@@ -156,6 +156,9 @@ class LoopEngine(
                 if (!save()) return
                 if (level >= setup.targetLevel) {
                     onLog("목표 달성. Lv.$level")
+                    // 다음 드래곤이 1번 슬롯을 차지할 수 있게 별을 끈다
+                    releaseTarget()
+                    prefs.preparedNo = 0
                     LoopStatus.update(LoopStatus.current.copy(running = false, phase = "done"))
                     FloatingService.refresh(ctx)
                     return
@@ -219,6 +222,57 @@ class LoopEngine(
         onLog("  대상 지정: $name")
         publish("prepare")
 
+        if (!openDragonDetail(name)) return false
+
+        val f = frame() ?: run { abort("동굴 화면을 읽지 못했다"); return false }
+        when (Judge.isFavorited(f)) {
+            true -> onLog("    즐겨찾기 이미 켜져 있음")
+            false -> {
+                tap(tStar); delay(3000)
+                val after = frame()
+                if (after == null || Judge.isFavorited(after) != true) {
+                    abort("즐겨찾기를 켜지 못했다"); return false
+                }
+                onLog("    즐겨찾기 켬")
+            }
+            null -> { abort("즐겨찾기 상태를 판정할 수 없다"); return false }
+        }
+
+        tap(tCaveX); delay(4000)
+        return saveOnly()
+    }
+
+    /**
+     * 대상 해제. 목표를 끝냈으면 즐겨찾기를 끈다.
+     *
+     * 켜둔 채로 두면 다음 드래곤을 지정했을 때 1번 슬롯에 어느 쪽이 올지
+     * 보장되지 않는다. 그러면 엉뚱한 용에 아이템을 쓴다.
+     *
+     * 여기서 실패해도 목표 자체는 이미 이뤘다. 중단으로 처리하지 않고
+     * 사람이 손으로 끄도록 알리기만 한다.
+     */
+    private suspend fun releaseTarget() {
+        val name = setup.dragon?.name ?: return
+        onLog("  대상 해제: $name")
+
+        if (!openDragonDetail(name)) {
+            onLog("  ! 즐겨찾기를 끄지 못했다 — 직접 꺼야 한다"); return
+        }
+        when (Judge.isFavorited(frame() ?: return)) {
+            false -> onLog("    즐겨찾기 이미 꺼져 있음")
+            true -> {
+                tap(tStar); delay(3000)
+                val after = frame()
+                if (after != null && Judge.isFavorited(after) == false) onLog("    즐겨찾기 끔")
+                else onLog("  ! 즐겨찾기를 끄지 못했다 — 직접 꺼야 한다")
+            }
+            null -> onLog("  ! 즐겨찾기 상태를 판정할 수 없다 — 직접 확인해야 한다")
+        }
+        tap(tCaveX); delay(4000)
+    }
+
+    /** 동굴에서 이름으로 찾아 상세를 연다. 지정·해제가 함께 쓴다. */
+    private suspend fun openDragonDetail(name: String): Boolean {
         if (!waitForGameReady()) return false
 
         // 동굴 진입 → 그리드 펼치기 → 검색.
@@ -250,23 +304,7 @@ class LoopEngine(
 
         tap(tFirstCell); delay(3000)
         tap(tGridClose); delay(3000)
-
-        val f = frame() ?: run { abort("동굴 화면을 읽지 못했다"); return false }
-        when (Judge.isFavorited(f)) {
-            true -> onLog("    즐겨찾기 이미 켜져 있음")
-            false -> {
-                tap(tStar); delay(3000)
-                val after = frame()
-                if (after == null || Judge.isFavorited(after) != true) {
-                    abort("즐겨찾기를 켜지 못했다"); return false
-                }
-                onLog("    즐겨찾기 켬")
-            }
-            null -> { abort("즐겨찾기 상태를 판정할 수 없다"); return false }
-        }
-
-        tap(tCaveX); delay(4000)
-        return saveOnly()
+        return true
     }
 
     /**
