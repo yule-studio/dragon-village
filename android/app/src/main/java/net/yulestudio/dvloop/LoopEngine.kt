@@ -314,11 +314,40 @@ class LoopEngine(
         }
     }
 
+    /**
+     * 게임이 앞에 없으면 다시 띄운다.
+     *
+     * 데삭으로 게임을 재실행하는 사이 다른 앱이 올라오는 일이 있다.
+     * 실제로 삼성 뉴스가 앞에 뜬 상태에서 로그인을 시도하다 멈췄다.
+     * 어느 화면에서 시작하든 게임부터 앞으로 끌어와야 한다.
+     */
+    private suspend fun ensureGameForeground(): Boolean {
+        repeat(3) {
+            val pkg = a11y?.foregroundPackage()
+            if (pkg == GAME_PKG) return true
+            onLog("    게임이 앞에 없다 (현재: $pkg) — 다시 띄운다")
+            ctx.packageManager.getLaunchIntentForPackage(GAME_PKG)?.let {
+                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(it)
+            } ?: run { abort("게임을 실행하지 못했다"); return false }
+            delay(8000)
+        }
+        return a11y?.foregroundPackage() == GAME_PKG
+    }
+
     private suspend fun waitForGameReady(timeoutMs: Long = 90000): Boolean {
         onLog("    게임 준비 대기")
+        if (!ensureGameForeground()) {
+            abort("게임을 앞으로 가져오지 못했다"); return false
+        }
         val end = System.currentTimeMillis() + timeoutMs
         var quiet = 0
         while (System.currentTimeMillis() < end) {
+            // 도중에 다른 앱이 끼어들 수 있다
+            if (a11y?.foregroundPackage()?.let { it != GAME_PKG && it != ctx.packageName } == true) {
+                if (!ensureGameForeground()) return false
+                quiet = 0
+            }
             val f = frame()
             if (f == null) { delay(1500); continue }
             when {
@@ -484,6 +513,7 @@ class LoopEngine(
         } ?: run { abort("게임을 실행하지 못했다"); return false }
 
         delay(22000)
+        if (!ensureGameForeground()) return false
         return login()
     }
 
@@ -503,6 +533,7 @@ class LoopEngine(
     /** 반드시 하이브로 계정으로만 로그인한다. 확인 안 되면 중단. */
     private suspend fun login(): Boolean {
         onLog("  로그인 시작")
+        if (!ensureGameForeground()) return false
         tap(tStart); delay(5000)
 
         // 구글로 새는 사고 방지 — 3버튼 선택 화면을 확인해야만 진행
@@ -518,8 +549,35 @@ class LoopEngine(
         val hy = frame()?.let { Judge.highbrowButtonY(it) } ?: tHighbrow.second
         a11y?.tap(tHighbrow.first, hy); delay(3000)
 
-        // 하이브로 입력폼이 떠야만 자격증명을 넣는다
-        if (!waitFor(15000) { Judge.isIdForm(it) }) {
+        // 하이브로 입력폼이 떠야만 자격증명을 넣는다.
+        // 다만 이미 로그인된 계정이면 게임이 스스로 넘어가버려 입력폼이 오지 않는다.
+        // 그때는 공지창이 뜨거나 월드맵으로 들어간다 — 그건 실패가 아니라 성공이다.
+        var sawForm = false
+        val end = System.currentTimeMillis() + 15000
+        while (System.currentTimeMillis() < end) {
+            val f = frame()
+            if (f != null) {
+                if (Judge.isIdForm(f)) { sawForm = true; break }
+                if (Judge.isNotice(f)) {
+                    onLog("  이미 로그인되어 있다 — 공지만 닫는다")
+                    repeat(3) {
+                        val n = frame() ?: return@repeat
+                        if (!Judge.isNotice(n)) return@repeat
+                        tap(tNoticeClose); delay(6000)
+                    }
+                    return true
+                }
+            }
+            delay(500)
+        }
+        if (!sawForm) {
+            // 로그인 화면도 입력폼도 아니면 이미 들어와 있는지 본다
+            if (a11y?.foregroundPackage() == GAME_PKG &&
+                frame()?.let { !Judge.isTitle(it) && !Judge.isLoginSelect(it) } == true
+            ) {
+                onLog("  로그인 화면을 벗어났다 — 이미 로그인된 것으로 본다")
+                return true
+            }
             abort("하이브로 아이디 입력폼이 안 뜬다 — 잘못된 로그인 경로"); return false
         }
         return loginFromForm()
