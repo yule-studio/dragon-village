@@ -8,6 +8,11 @@ loop_run*.out
 __pycache__/
 .DS_Store
 
+# 크롤러 생성물
+data/*.db
+data/*.db-journal
+data/*.log
+
 # Android
 android/build/
 android/app/build/

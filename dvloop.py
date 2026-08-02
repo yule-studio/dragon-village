@@ -36,8 +36,15 @@ T_SET_X = (1647, 87)        # 설정창 닫기
 T_PANEL = (368, 977)        # 하단 용 카드
 T_NOTICE_CLOSE = (1170, 1013)
 
+# 동굴 (즐겨찾기 해제용)
+T_CAVE = (1714, 88)          # 상단 '동굴'
+T_CAVE_SLOT1 = (374, 246)    # 동굴 좌측 목록 1번 (즐겨찾기 대상이 여기 온다)
+T_STAR = (1732, 936)         # 즐겨찾기 별
+T_CAVE_X = (2012, 53)        # 동굴 닫기
+
 # 용 목록 슬롯 (스크롤 없이 보이는 5칸). 6번째 이후는 미지원
-DRAGON_SLOTS = {1: (1076, 164), 2: (1076, 345), 3: (1076, 523),
+DRAGON_SLOTS = {0: None,  # 0 = 동굴에서 이미 선택된 용을 그대로 쓴다 (슬롯 탭 생략)
+                1: (1076, 164), 2: (1076, 345), 3: (1076, 523),
                 4: (1076, 702), 5: (1076, 883)}
 
 # 아이템 목록 슬롯 (스크롤 없이 보이는 3칸)
@@ -58,6 +65,7 @@ T_LOGIN = (1170, 699)
 # MAX 뱃지 판정 지점 (밝으면 MAX, 어두우면 실패)
 BADGES = {"HP": 441, "ATK": 532, "DEF": 624}
 BADGE_XS = (1670, 1681, 1692)
+T_GRADE = (696, 632)   # 결과창 등급 육각형
 
 
 def log(msg):
@@ -102,6 +110,25 @@ def is_notice(f=None):
     return a < 260 and b < 260
 
 
+def is_title(f=None):
+    """타이틀 화면(TOUCH TO START) 판정.
+
+    '이전 드빌아이디' 버튼은 넓고 균일한 진한 파랑이다.
+    월드맵의 에스텔라 지역도 그 자리가 파랗지만 그림이라 색이 고르지 않다.
+    → 색상 조건 + 균일도를 함께 본다.
+    """
+    f = f or frame()
+    pts = [px(f, x, 985) for x in (1750, 1790, 1900, 1940)]
+    for r, g, b in pts:
+        if not (b > 100 and b > r + 50 and r < 100):
+            return False
+    for ch in range(3):
+        vals = [p[ch] for p in pts]
+        if max(vals) - min(vals) > 14:
+            return False
+    return True
+
+
 def is_login_select(f=None):
     """구글/페이스북/하이브로 3버튼 선택 화면"""
     f = f or frame()
@@ -118,9 +145,48 @@ def is_id_form(f=None):
     return all(min(px(f, 1170, y)) > 215 for y in (461, 580))
 
 
+def _is_orange(rgb):
+    r, g, b = rgb
+    return r > 200 and b < 130 and (r - b) > 110
+
+
 def badge_max(f, y):
-    tot = sum(sum(px(f, x, y)) for x in BADGE_XS)
-    return tot / len(BADGE_XS) > 400
+    """MAX 뱃지 판정.
+
+    밝기로 보면 안 된다 — 뱃지가 없을 때 그 자리에 무엇이 오는지가
+    드래곤마다 다르다(스탯 숫자가 크면 어두운 박스, 작으면 밝은 베이지 배경).
+    실제로 그 때문에 루아셰아 초반 판정이 전부 오탐이었다.
+
+    뱃지는 주황 폭죽이고, 위아래 끝(dy=±24)이 가장 진한 주황이다.
+    가운데는 흰 'MAX' 글자라 색으로 판정할 수 없다.
+    실측: 뱃지 없음 0/6, 있음 6/6 으로 완전히 갈린다.
+    """
+    pts = [px(f, 1681 + dx, y + dy) for dy in (-24, 24) for dx in (-15, 0, 15)]
+    return sum(_is_orange(p) for p in pts) >= 4
+
+
+def grade_is_70(f):
+    """레벨업 결과창의 등급 육각형이 7.0 인지.
+
+    실측: 7.0 = 시안 (8,219,255) / 7.0 미만 = 금색 (255,202,49).
+    가운데는 흰 숫자라 여러 점을 보고 다수결로 판정한다.
+    True = 7.0, False = 7.0 미만, None = 판정 불가.
+
+    스탯 뱃지와 달리 이 값은 '실제 조건' 그 자체다. 최종 판단 기준으로 쓴다.
+    """
+    gx, gy = T_GRADE
+    blue = gold = 0
+    for dx, dy in ((-14, 0), (14, 0), (0, -14), (0, 14), (0, 0)):
+        r, g, b = px(f, gx + dx, gy + dy)
+        if b > r + 40 and b > 120:
+            blue += 1
+        elif r > 180 and r > b + 60:
+            gold += 1
+    if blue >= 2 and gold == 0:
+        return True
+    if gold >= 2 and blue == 0:
+        return False
+    return None
 
 
 def wait_for(pred, timeout=25, interval=1.0):
@@ -208,12 +274,83 @@ def desak():
 
 
 def open_dialog():
-    """월드맵 → 용 패널 → 번개고룡 → 아이템 → 레벨업 다이얼로그"""
-    tap(T_PANEL); time.sleep(4)
-    tap(T_DRAGON); time.sleep(3)
-    tap(T_ITEM); time.sleep(3)
-    if not wait_for(is_levelup_dialog, timeout=15):
-        abort("레벨업 다이얼로그가 안 열림", "no_dialog")
+    """월드맵 → 용 패널 → 대상 용 → 아이템 → 레벨업 다이얼로그
+
+    용 패널은 토글이라 이미 열려 있으면 첫 탭이 닫는 데 쓰인다.
+    화면 상태를 알 수 없으므로 다이얼로그 확인을 게이트로 최대 3회 재시도한다.
+    """
+    if is_title():
+        log("    타이틀 화면 감지 — 로그인부터 진행")
+        login()
+    for attempt in range(1, 4):
+        if is_title():
+            abort("로그아웃 상태로 되돌아갔다 — 탭하지 않고 중단", "logged_out")
+        tap(T_PANEL); time.sleep(4)
+        if T_DRAGON is not None:
+            tap(T_DRAGON); time.sleep(3)
+        tap(T_ITEM); time.sleep(3)
+        if wait_for(is_levelup_dialog, timeout=12):
+            return
+        log(f"    다이얼로그 미확인 ({attempt}/3) — 재시도")
+    abort("레벨업 다이얼로그가 안 열림 (3회 시도)", "no_dialog")
+
+
+def is_favorited(f=None):
+    """즐겨찾기 별이 켜져 있으면 True (주황), 꺼져 있으면 False (회색).
+    어느 쪽도 확실하지 않으면 None — 이 경우 아무것도 누르지 않는다."""
+    f = f or frame()
+    r, g, b = px(f, *T_STAR)
+    if r > 190 and g > 110 and b < 110 and r > b + 90:
+        return True
+    if abs(r - g) < 30 and abs(g - b) < 30 and 60 < r < 190:
+        return False
+    return None
+
+
+def unfavorite():
+    """목표 달성 후 즐겨찾기를 끄고 저장한다.
+
+    별 색이 '켜짐'으로 확실히 판정될 때만 누른다. 애매하면 손대지 않고 보고한다.
+    """
+    log("  즐겨찾기 해제 시도")
+    tap(T_CAVE); time.sleep(5)
+    tap(T_CAVE_SLOT1); time.sleep(3)
+
+    st = is_favorited()
+    log(f"    별 픽셀 {px(frame(), *T_STAR)} → {'켜짐' if st else ('꺼짐' if st is False else '판정불가')}")
+    if st is not True:
+        log("    확실하지 않아 건드리지 않는다. 수동 확인 필요.")
+        shot("FAVORITE_manual_check")
+        tap(T_CAVE_X); time.sleep(4)
+        return False
+
+    tap(T_STAR); time.sleep(3)
+    if is_favorited() is not False:
+        log("    해제 확인 실패. 수동 확인 필요.")
+        shot("FAVORITE_off_failed")
+        tap(T_CAVE_X); time.sleep(4)
+        return False
+
+    log("    즐겨찾기 해제됨")
+    tap(T_CAVE_X); time.sleep(4)
+
+    # 해제 상태를 서버에 남긴다
+    for attempt in range(1, 4):
+        tap(T_MENU); time.sleep(2)
+        tap(T_SETTINGS); time.sleep(3)
+        ok, _, _ = dvguard.is_settings_open()
+        if ok:
+            break
+    else:
+        log("    해제 후 저장 실패 — 설정창 미확인")
+        return False
+    x, y = dvguard.SAVE_SAFE_TAP
+    tap((x, y)); time.sleep(3)
+    tap(T_SAVE_OK); time.sleep(2)
+    tap(T_SET_X); time.sleep(2)
+    tap(T_MENU); time.sleep(2)
+    log("    해제 후 저장 완료")
+    return True
 
 
 def save():
@@ -264,9 +401,18 @@ def cycle(n):
 
     f = frame()
     res = {k: badge_max(f, y) for k, y in BADGES.items()}
-    win = all(res.values())
+    triple = all(res.values())
+    grade = grade_is_70(f)
+    win = triple and grade is True
     mark = " ".join(f"{k}{'O' if v else 'X'}" for k, v in res.items())
-    log(f"사이클 {n}: {mark} → {'★트리플맥스★' if win else '실패'}")
+    gtxt = {True: "7.0", False: "7.0미만", None: "등급판정불가"}[grade]
+    log(f"사이클 {n}: {mark} / {gtxt} → {'★트리플맥스★' if win else '실패'}")
+
+    # 뱃지와 등급이 어긋나면 내 판정 모델이 틀린 것이다. 저장하지 말고 멈춘다.
+    if triple and grade is not True:
+        log(f"    !! 뱃지는 3개 MAX 인데 등급이 7.0 이 아니다 (육각형 {px(f, *T_GRADE)})")
+        shot(f"MISMATCH_c{n}")
+        abort("판정 불일치 — 사람이 확인해야 한다", f"mismatch_c{n}")
 
     if win:
         shot(f"SUCCESS_cycle{n:04d}")
@@ -315,7 +461,7 @@ def main():
 
     log("=" * 60)
     log(f"루프 시작: {a.name} Lv.{base} → Lv.{base + target}")
-    log(f"  용 슬롯 {a.dragon_slot}{T_DRAGON} / 아이템 슬롯 {a.item_slot}{T_ITEM}")
+    log(f"  용 슬롯 {a.dragon_slot}{T_DRAGON or ' (현재 선택된 용)'} / 아이템 슬롯 {a.item_slot}{T_ITEM}")
     log(f"  최대 {max_cycles}사이클" +
         (f" / {STOP_AT:%H:%M} 까지" if STOP_AT else ""))
     log("토큰: 이 루프는 Claude 개입 없이 자율 실행된다 → 사이클당 토큰 소모 0")
@@ -338,6 +484,7 @@ def main():
             if wins >= target:
                 log(f"목표 달성. Lv.{base + wins}")
                 save()
+                unfavorite()
                 break
             save()
         else:
