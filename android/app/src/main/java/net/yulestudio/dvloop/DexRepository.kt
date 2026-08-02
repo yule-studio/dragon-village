@@ -83,6 +83,16 @@ class DexRepository(private val ctx: Context) {
         else -> code
     }
 
+    /** 도감 번호로 한 마리. 저장된 설정을 되살릴 때 쓴다. */
+    fun byNo(no: Int): Dragon? =
+        db.rawQuery(
+            "SELECT dragon_no,name,attr,type,gen FROM dragon WHERE dragon_no=?",
+            arrayOf("$no")
+        ).use { c ->
+            if (!c.moveToFirst()) null
+            else Dragon(c.getInt(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4))
+        }
+
     fun count(): Int =
         db.rawQuery("SELECT COUNT(*) FROM dragon", null).use {
             if (it.moveToFirst()) it.getInt(0) else 0

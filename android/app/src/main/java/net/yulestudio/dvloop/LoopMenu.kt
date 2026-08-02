@@ -61,7 +61,10 @@ enum class LoopKind(
 fun LoopMenu(
     creds: Credentials,
     canOverlay: Boolean,
+    saved: SavedLoop?,
     onOverlaySetting: () -> Unit,
+    onResume: () -> Unit,
+    onNewSetup: () -> Unit,
     onPick: (LoopKind) -> Unit,
     onLogout: () -> Unit,
 ) {
@@ -92,6 +95,11 @@ fun LoopMenu(
                 Spacer(Modifier.height(20.dp))
             }
 
+            if (saved != null) {
+                SavedCard(saved, canOverlay, onResume, onNewSetup)
+                Spacer(Modifier.height(24.dp))
+            }
+
             Text("무엇을 돌릴까요?", fontSize = 18.sp,
                 fontWeight = FontWeight.Bold, color = Ink)
             Spacer(Modifier.height(4.dp))
@@ -115,6 +123,71 @@ fun LoopMenu(
                 fontSize = 12.sp, color = Gray,
             )
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+/** 지난번에 하던 설정. 5단계를 다시 밟지 않고 한 번에 재개한다. */
+data class SavedLoop(
+    val dragonName: String,
+    val stageLabel: String,
+    val level: Int,
+    val targetLevel: Int,
+    val grade: Double,
+    val done: Boolean,
+)
+
+@Composable
+private fun SavedCard(
+    s: SavedLoop,
+    canOverlay: Boolean,
+    onResume: () -> Unit,
+    onNewSetup: () -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+            .background(if (s.done) Field else Color(0xFFE8F1FE))
+            .padding(18.dp),
+    ) {
+        Text(
+            if (s.done) "지난 목표를 끝냈어요" else "하던 작업이 있어요",
+            fontSize = 13.sp, color = Gray,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "${s.dragonName} · ${s.stageLabel}",
+            fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "Lv.${s.level} → Lv.${s.targetLevel} · 등급 ${String.format("%.1f", s.grade)} 유지",
+            fontSize = 13.sp, color = Gray,
+        )
+        Spacer(Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!s.done) {
+                Box(
+                    Modifier.weight(1f).height(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (canOverlay) Blue else Line)
+                        .clickable(enabled = canOverlay, onClick = onResume),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("이어서 시작", fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (canOverlay) Color.White else Gray)
+                }
+            }
+            Box(
+                Modifier.weight(1f).height(48.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White)
+                    .border(1.dp, Line, RoundedCornerShape(12.dp))
+                    .clickable(onClick = onNewSetup),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("새로 설정", fontSize = 15.sp, color = Ink)
+            }
         }
     }
 }

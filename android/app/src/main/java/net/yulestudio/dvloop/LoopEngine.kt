@@ -138,6 +138,8 @@ class LoopEngine(
                 wins++
                 level++
                 onLog("  누적 성공 $wins  (Lv.$level)")
+                // 중단되더라도 여기서부터 이어갈 수 있게 남긴다
+                LoopPrefs(ctx).currentLevel = level
                 publish("save")
                 if (!save()) return
                 if (level >= setup.targetLevel) {
@@ -207,17 +209,24 @@ class LoopEngine(
 
         if (!waitForGameReady()) return false
 
-        clearBlockers()
-        tap(tCave); delay(5000)
-        clearBlockers()
-        tap(tGridOpen); delay(4000)
-
-        // 접근성으로 입력하므로 한글이 들어간다 (adb 로는 불가능했다)
-        tap(tSearch); delay(2500)
-        if (!typeText(name)) {
-            // 입력이 안 됐는데 그대로 진행하면 엉뚱한 용을 고른다.
-            // 게다가 키보드가 없는 상태에서 뒤로가기를 누르면
-            // 게임 종료 확인창이 떠버린다. 여기서 멈춘다.
+        // 동굴 진입 → 그리드 펼치기 → 검색.
+        // 전환 중에는 탭이 먹지 않아 한 번에 못 들어가는 일이 잦다.
+        // 실제로 동굴이 안 열린 채 이후 탭이 월드맵을 건드려 지도가 넘어갔다.
+        // 검색창에 글자가 들어갔는지를 성공 기준으로 삼아 재시도한다.
+        // (접근성으로 입력하므로 한글이 들어간다 — adb 로는 불가능했다)
+        var typed = false
+        for (attempt in 1..3) {
+            clearBlockers()
+            tap(tCave); delay(5000)
+            clearBlockers()
+            tap(tGridOpen); delay(4000)
+            tap(tSearch); delay(2500)
+            if (typeText(name)) { typed = true; break }
+            onLog("    검색 진입 실패 ($attempt/3) — 되돌리고 재시도")
+            tap(tCaveX); delay(3000)   // 어디에 있는지 모르니 동굴을 닫아 월드맵으로
+        }
+        if (!typed) {
+            // 입력이 안 됐는데 진행하면 엉뚱한 용을 고른다.
             abort("검색어를 입력하지 못했다")
             return false
         }
@@ -407,22 +416,24 @@ class LoopEngine(
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         )
-        if (!s.waitForText("저장공간", "저장 공간", "Storage", timeoutMs = 8000)) {
+        // 설정 화면이 뜨고 접근성 트리가 채워지기까지 시간이 걸린다.
+        // 8초로는 모자라 '앱 정보 화면을 찾지 못했다' 로 멈췄다.
+        if (!s.waitForText("저장공간", "저장 공간", "Storage", timeoutMs = 20000)) {
             abort("앱 정보 화면을 찾지 못했다"); return false
         }
-        if (!s.clickByText("저장공간", "저장 공간", "Storage")) {
+        if (!clickRetry(s, 3, "저장공간", "저장 공간", "Storage")) {
             abort("저장공간 항목을 누르지 못했다"); return false
         }
-        if (!s.waitForText("데이터 삭제", "저장공간 관리", "Clear data", timeoutMs = 8000)) {
+        if (!s.waitForText("데이터 삭제", "Clear data", timeoutMs = 20000)) {
             abort("저장공간 화면을 찾지 못했다"); return false
         }
-        if (!s.clickByText("데이터 삭제", "Clear data")) {
+        if (!clickRetry(s, 3, "데이터 삭제", "Clear data")) {
             abort("데이터 삭제 버튼을 누르지 못했다"); return false
         }
         // 확인 대화상자
-        delay(1000)
-        s.clickByText("삭제", "확인", "OK", "Delete")
-        delay(2500)
+        delay(1500)
+        clickRetry(s, 3, "삭제", "확인", "OK", "Delete")
+        delay(3000)
 
         // 게임 재실행
         ctx.packageManager.getLaunchIntentForPackage(GAME_PKG)?.let {
@@ -432,6 +443,19 @@ class LoopEngine(
 
         delay(22000)
         return login()
+    }
+
+    /** 접근성 트리가 늦게 채워질 수 있어 몇 번 더 시도한다. */
+    private suspend fun clickRetry(
+        s: LoopAccessibilityService,
+        times: Int,
+        vararg texts: String,
+    ): Boolean {
+        repeat(times) {
+            if (s.clickByText(*texts)) return true
+            delay(1200)
+        }
+        return false
     }
 
     /** 반드시 하이브로 계정으로만 로그인한다. 확인 안 되면 중단. */

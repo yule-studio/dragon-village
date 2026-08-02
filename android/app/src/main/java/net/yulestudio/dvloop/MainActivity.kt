@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val repo = DexRepository(applicationContext)
         val creds = Credentials(applicationContext)
+        val prefs = LoopPrefs(applicationContext)
 
         setContent {
             MaterialTheme {
@@ -66,7 +67,12 @@ class MainActivity : ComponentActivity() {
                         Screen.MENU -> LoopMenu(
                             creds = creds,
                             canOverlay = canOverlay,
+                            saved = savedLoop(prefs),
                             onOverlaySetting = { openOverlaySetting() },
+                            onResume = {
+                                prefs.restore(repo)?.let { startLoop(it) }
+                            },
+                            onNewSetup = { screen = Screen.SETUP },
                             onPick = { kind ->
                                 // 지금 열려 있는 것은 레벨업 루프뿐이다
                                 if (kind == LoopKind.LEVEL_UP) screen = Screen.SETUP
@@ -77,12 +83,29 @@ class MainActivity : ComponentActivity() {
                         Screen.SETUP -> SetupFlow(
                             repo = repo,
                             onExit = { screen = Screen.MENU },
-                            onStart = { setup -> startLoop(setup); screen = Screen.MENU },
+                            onStart = { setup ->
+                                prefs.save(setup)
+                                startLoop(setup)
+                                screen = Screen.MENU
+                            },
                         )
                     }
                 }
             }
         }
+    }
+
+    private fun savedLoop(prefs: LoopPrefs): SavedLoop? {
+        if (!prefs.hasSetup) return null
+        val stage = runCatching { Stage.valueOf(prefs.stageName) }.getOrNull() ?: return null
+        return SavedLoop(
+            dragonName = prefs.dragonName,
+            stageLabel = stage.label,
+            level = prefs.currentLevel,
+            targetLevel = prefs.targetLevel,
+            grade = prefs.currentGrade.toDouble(),
+            done = prefs.isDone,
+        )
     }
 
     private fun hasOverlay() =
