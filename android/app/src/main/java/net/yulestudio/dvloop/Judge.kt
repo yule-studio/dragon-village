@@ -262,7 +262,17 @@ object Judge {
                 val c = px(bmp, x, y)
                 r(c) > 180 && r(c) - b(c) > 25 && g(c) in b(c)..r(c)
             }
-            if (cream) return y
+            if (!cream) continue
+            // 찾은 줄은 버튼의 윗변이다. 거기를 누르면 테두리라 안 먹는다 —
+            // 실제로 같은 자리를 무한히 두드리다 멈췄다.
+            // 글자를 피한 x=1060 에서 아래로 훑어 버튼의 세로 중심을 구한다.
+            var bottom = y
+            while (bottom < 1040) {
+                val c = px(bmp, 1060, bottom + 1)
+                if (!(b(c) > 130 && b(c) - r(c) > 90 && g(c) < b(c))) break
+                bottom++
+            }
+            return (y + bottom) / 2
         }
         return null
     }
