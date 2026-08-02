@@ -39,7 +39,7 @@ class DexRepository(private val ctx: Context) {
     private fun assetSize(): Long =
         ctx.assets.openFd(ASSET).use { it.length }
 
-    /** 속성 코드 → 사람이 읽는 이름. DA/DU 는 확인되지 않아 코드를 그대로 쓴다. */
+    /** 속성 코드 → 사람이 읽는 이름. DA = DAwn(여명), DU = DUsk(황혼). */
     fun attrLabel(code: String?): String = when (code) {
         "F" -> "불"
         "W" -> "바람"
@@ -47,10 +47,28 @@ class DexRepository(private val ctx: Context) {
         "E" -> "땅"
         "L" -> "빛"
         "D" -> "어둠"
+        "DA" -> "여명"
+        "DU" -> "황혼"
         "N" -> "무"
         null -> "-"
         else -> code
     }
+
+    /**
+     * 그 드래곤이 가진 진화 단계 번호.
+     *
+     * 도감 사이트의 정의를 그대로 따른다:
+     * 0 알 · 1 해치 · 2 해츨링 · 3 성체 · 4 캡슐 · 5 각성 · 6 초월 · 7 강림
+     *
+     * 1215마리 중 930마리는 성체까지뿐이다. 없는 단계를 고르게 두면 안 된다.
+     */
+    fun availableSteps(dragonNo: Int): Set<Int> =
+        db.rawQuery(
+            "SELECT DISTINCT step FROM dragon_image WHERE dragon_no=? AND kind='thumb'",
+            arrayOf("$dragonNo")
+        ).use { c ->
+            buildSet { while (c.moveToNext()) add(c.getInt(0)) }
+        }
 
     /** 타입 코드 → 게임 화면 태그와 동일한 이름. */
     fun typeLabel(code: String?): String = when (code) {
