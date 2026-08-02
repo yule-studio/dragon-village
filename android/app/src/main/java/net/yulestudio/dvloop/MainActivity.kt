@@ -7,24 +7,37 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 const val GAME_PKG = "com.highbrow.game"
 
-private enum class Screen { LOGIN, HOME, SETUP }
+private enum class Screen { LOGIN, MENU, SETUP }
 
 class MainActivity : ComponentActivity() {
+
+    private var pendingSetup: LoopSetup? = null
+
+    /** 화면 캡처 허용을 받아 루프를 시작한다. 매번 사용자가 눌러야 한다. */
+    private val captureLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val data = result.data
+        val setup = pendingSetup
+        if (result.resultCode == RESULT_OK && data != null && setup != null) {
+            LoopService.start(this, setup, result.resultCode, data)
+            packageManager.getLaunchIntentForPackage(GAME_PKG)?.let { startActivity(it) }
+        } else {
+            LoopStatus.update(LoopStatus.current.copy(running = false))
+            LoopService.log("화면 캡처 허용을 받지 못해 시작하지 않았다")
+        }
+        pendingSetup = null
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,8 +47,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 var screen by remember {
-                    mutableStateOf(if (creds.isSaved) Screen.HOME else Screen.LOGIN)
+                    mutableStateOf(if (creds.isSaved) Screen.MENU else Screen.LOGIN)
                 }
+                // 권한은 설정 화면에 다녀오면 바뀔 수 있다. 화면이 돌아올 때마다 다시 본다.
+                var canOverlay by remember { mutableStateOf(hasOverlay()) }
+                LaunchedEffect(screen) { canOverlay = hasOverlay() }
+
                 Surface(Modifier.fillMaxSize(), color = Color.White) {
                     when (screen) {
                         Screen.LOGIN -> LoginScreen(initialId = creds.id) { id, pw, remember ->
@@ -43,24 +60,41 @@ class MainActivity : ComponentActivity() {
                                 creds.id = id
                                 creds.password = pw
                             }
-                            screen = Screen.HOME
+                            screen = Screen.MENU
                         }
 
-                        Screen.HOME -> HomeScreen(
+                        Screen.MENU -> LoopMenu(
                             creds = creds,
-                            onSetup = { screen = Screen.SETUP },
+                            canOverlay = canOverlay,
+                            onOverlaySetting = { openOverlaySetting() },
+                            onPick = { kind ->
+                                // 지금 열려 있는 것은 레벨업 루프뿐이다
+                                if (kind == LoopKind.LEVEL_UP) screen = Screen.SETUP
+                            },
                             onLogout = { creds.clear(); screen = Screen.LOGIN },
                         )
 
                         Screen.SETUP -> SetupFlow(
                             repo = repo,
-                            onExit = { screen = Screen.HOME },
-                            onStart = { setup -> startLoop(setup); screen = Screen.HOME },
+                            onExit = { screen = Screen.MENU },
+                            onStart = { setup -> startLoop(setup); screen = Screen.MENU },
                         )
                     }
                 }
             }
         }
+    }
+
+    private fun hasOverlay() =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)
+
+    private fun openOverlaySetting() {
+        startActivity(
+            Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName"),
+            )
+        )
     }
 
     /** 앱이 앞에 있으면 미니창은 필요 없다. 앱 화면이 곧 메인이다. */
@@ -76,6 +110,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startLoop(setup: LoopSetup) {
+        if (!LoopAccessibilityService.isRunning) {
+            LoopService.log("접근성 서비스가 꺼져 있다. 설정에서 켜야 한다.")
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            return
+        }
         LoopStatus.clearStop()
         LoopStatus.update(
             LoopStatus.Snapshot(
@@ -86,95 +125,8 @@ class MainActivity : ComponentActivity() {
                 targetLevel = setup.targetLevel,
             )
         )
-        // 게임을 띄우면 onPause 가 불려 미니창이 따라 붙는다
-        packageManager.getLaunchIntentForPackage(GAME_PKG)?.let { startActivity(it) }
-    }
-}
-
-@Composable
-fun HomeScreen(creds: Credentials, onSetup: () -> Unit, onLogout: () -> Unit) {
-    val ctx = LocalContext.current
-    val canOverlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-        Settings.canDrawOverlays(ctx)
-
-    Column(
-        Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 20.dp),
-    ) {
-        Spacer(Modifier.height(16.dp))
-        // 로그아웃은 제목 첫 줄에 맞춘다. 가운데 정렬하면 두 줄짜리 왼쪽과 어긋난다.
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Column(Modifier.weight(1f)) {
-                Text("드빌 매크로", fontSize = 22.sp, lineHeight = 28.sp,
-                    fontWeight = FontWeight.Bold, color = Ink)
-                Spacer(Modifier.height(2.dp))
-                Text("${creds.id} 로 로그인됨", fontSize = 13.sp, color = Gray)
-            }
-            TextButton(
-                onClick = onLogout,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                modifier = Modifier.height(28.dp),
-            ) { Text("로그아웃", color = Gray, fontSize = 13.sp) }
-        }
-
-        Spacer(Modifier.height(28.dp))
-
-        if (!canOverlay) {
-            OverlayNotice {
-                ctx.startActivity(
-                    Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:${ctx.packageName}"),
-                    )
-                )
-            }
-            Spacer(Modifier.height(20.dp))
-        }
-
-        Column(
-            Modifier.fillMaxWidth().background(Field, RoundedCornerShape(16.dp)).padding(18.dp)
-        ) {
-            Text("레벨업 루프", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Ink)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "드래곤과 단계, 목표 레벨을 차례로 고르면\n드빌을 실행하고 바로 시작해요.",
-                fontSize = 13.sp, lineHeight = 20.sp, color = Gray,
-            )
-        }
-
-        Spacer(Modifier.weight(1f))
-        PrimaryButton("루프 설정하기", enabled = canOverlay, onClick = onSetup)
-        if (!canOverlay) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "미니창 권한을 먼저 켜 주세요.",
-                fontSize = 12.sp, color = Gray,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-            )
-        }
-        Spacer(Modifier.height(24.dp))
-    }
-}
-
-@Composable
-private fun OverlayNotice(onClick: () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF4E6)),
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Text("미니창 권한이 필요해요", fontSize = 15.sp,
-                fontWeight = FontWeight.Bold, color = Ink)
-            Text(
-                "게임 화면 위에 작은 창을 띄워 진행 상황을 보고 멈출 수 있어요.",
-                fontSize = 13.sp, color = Gray, modifier = Modifier.padding(top = 4.dp),
-            )
-            Spacer(Modifier.height(10.dp))
-            Button(
-                onClick = onClick,
-                colors = ButtonDefaults.buttonColors(containerColor = Blue),
-                shape = RoundedCornerShape(10.dp),
-            ) { Text("권한 설정하기") }
-        }
+        pendingSetup = setup
+        // 화면 캡처 허용 → 허용되면 서비스가 뜨고 게임이 실행된다
+        captureLauncher.launch(ScreenCapture.permissionIntent(this))
     }
 }

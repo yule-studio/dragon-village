@@ -243,12 +243,15 @@ class FloatingService : Service() {
         val s = LoopStatus.current
         bubbleLabel.text = if (s.running) "Lv.${s.level}" else "정지"
         titleText.text = "${s.target} · ${s.stage}"
-        statText.text = buildString {
-            append("Lv.${s.level} → ${s.targetLevel}")
-            append("  ·  ${s.cycle}회 시도")
-            if (s.cycle > 0) append(" · 성공 ${s.wins}회")
-            if (!s.running) append("  (정지됨)")
+        val phase = when (s.phase) {
+            "levelup" -> "레벨업 중"
+            "save" -> "저장 중"
+            "desak" -> "데삭 중"
+            "login" -> "로그인 중"
+            "done" -> "목표 달성"
+            else -> if (s.running) "진행 중" else "정지됨"
         }
+        statText.text = "Lv.${s.level} → ${s.targetLevel}  ·  ${s.cycle}회 시도 · 성공 ${s.wins}회\n$phase"
     }
 
     // ---------- 드래그 ----------
@@ -332,6 +335,7 @@ object LoopStatus {
         val targetLevel: Int = 45,
         val cycle: Int = 0,
         val wins: Int = 0,
+        val phase: String = "idle",
     )
 
     @Volatile
