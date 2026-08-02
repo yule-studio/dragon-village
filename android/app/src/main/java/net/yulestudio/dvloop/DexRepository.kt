@@ -39,6 +39,32 @@ class DexRepository(private val ctx: Context) {
     private fun assetSize(): Long =
         ctx.assets.openFd(ASSET).use { it.length }
 
+    /** 속성 코드 → 사람이 읽는 이름. DA/DU 는 확인되지 않아 코드를 그대로 쓴다. */
+    fun attrLabel(code: String?): String = when (code) {
+        "F" -> "불"
+        "W" -> "바람"
+        "A" -> "물"
+        "E" -> "땅"
+        "L" -> "빛"
+        "D" -> "어둠"
+        "N" -> "무"
+        null -> "-"
+        else -> code
+    }
+
+    /** 타입 코드 → 게임 화면 태그와 동일한 이름. */
+    fun typeLabel(code: String?): String = when (code) {
+        "H" -> "체력"
+        "A" -> "공격"
+        "D" -> "방어"
+        "HA" -> "체공"
+        "AD" -> "공방"
+        "HD" -> "체방"
+        "NONE" -> "중립"
+        null -> "-"
+        else -> code
+    }
+
     fun count(): Int =
         db.rawQuery("SELECT COUNT(*) FROM dragon", null).use {
             if (it.moveToFirst()) it.getInt(0) else 0
@@ -48,13 +74,31 @@ class DexRepository(private val ctx: Context) {
      * 이름 부분일치 검색. query 가 비면 도감 번호 순으로 앞에서부터.
      * offset 으로 이어 읽어 무한 스크롤에 쓴다.
      */
-    fun search(query: String = "", limit: Int = 40, offset: Int = 0): List<Dragon> {
-        val sql = if (query.isBlank())
-            "SELECT dragon_no,name,attr,type,gen FROM dragon ORDER BY dragon_no LIMIT ? OFFSET ?"
-        else
-            "SELECT dragon_no,name,attr,type,gen FROM dragon WHERE name LIKE ? ORDER BY dragon_no LIMIT ? OFFSET ?"
-        val args = if (query.isBlank()) arrayOf("$limit", "$offset")
-        else arrayOf("%$query%", "$limit", "$offset")
+    fun search(
+        query: String = "",
+        limit: Int = 40,
+        offset: Int = 0,
+        attr: String? = null,
+        type: String? = null,
+    ): List<Dragon> {
+        val where = buildList {
+            if (query.isNotBlank()) add("name LIKE ?")
+            if (attr != null) add("attr = ?")
+            if (type != null) add("type = ?")
+        }
+        val args = buildList {
+            if (query.isNotBlank()) add("%$query%")
+            if (attr != null) add(attr)
+            if (type != null) add(type)
+            add("$limit")
+            add("$offset")
+        }.toTypedArray()
+
+        val sql = buildString {
+            append("SELECT dragon_no,name,attr,type,gen FROM dragon")
+            if (where.isNotEmpty()) append(" WHERE ").append(where.joinToString(" AND "))
+            append(" ORDER BY dragon_no LIMIT ? OFFSET ?")
+        }
 
         return db.rawQuery(sql, args).use { c ->
             buildList {
