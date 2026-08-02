@@ -7,3 +7,12 @@ loop_run*.out
 *.pyc
 __pycache__/
 .DS_Store
+
+# Android
+android/build/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/.idea/
+# 도감 DB 는 dexcrawl.py 로 생성해 assets 에 복사한다 (12MB 바이너리)
+android/app/src/main/assets/dragondex.db
