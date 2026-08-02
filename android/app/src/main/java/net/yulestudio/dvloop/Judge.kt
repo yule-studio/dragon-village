@@ -104,13 +104,25 @@ object Judge {
         return b(c) > r(c) + 40 && b(c) > 90
     }
 
-    /** 로그인 후 공지창 (하단 어두운 닫기 바) */
+    /**
+     * 로그인 후 공지창의 하단 '닫기' 바.
+     *
+     * 어둡기만 보면 안 된다 — 월드맵 하단도 (33,16,16) 처럼 어두워서
+     * 오탐이 났고, 같은 자리를 계속 누르다 다른 앱 설정까지 들어갔다.
+     *
+     * 공지 바는 폭 전체에 걸친 **균일한 회색 띠**다.
+     * 회색(채널 차이가 작음) + 균일함(가로로 값이 거의 같음)을 함께 본다.
+     */
     fun isNotice(bmp: Bitmap): Boolean {
-        fun dark(p: Pair<Int, Int>): Boolean {
-            val c = px(bmp, p.first, p.second)
-            return r(c) + g(c) + b(c) < 260
+        val pts = intArrayOf(400, 800, 1200, 1600, 1900).map { px(bmp, it, 1013) }
+        for (c in pts) {
+            val sum = r(c) + g(c) + b(c)
+            if (sum >= 260) return false                       // 어두워야 한다
+            if (maxOf(r(c), g(c), b(c)) - minOf(r(c), g(c), b(c)) > 12) return false  // 회색이어야
         }
-        return dark(NOTICE_L) && dark(NOTICE_R)
+        // 가로로 값이 고른가 (그림이면 들쭉날쭉하다)
+        val sums = pts.map { r(it) + g(it) + b(it) }
+        return (sums.max() - sums.min()) <= 24
     }
 
     /**

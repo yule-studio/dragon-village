@@ -152,6 +152,7 @@ class LoopEngine(
 
     /** 레벨업 1회. true=트리플맥스, null=중단 */
     private suspend fun doCycle(): Boolean? {
+        clearBlockers()   // 루프 도중에도 팝업·시스템 창은 언제든 끼어든다
         val f0 = frame() ?: run { abort("화면을 읽지 못했다"); return null }
         if (!Judge.isLevelUpDialog(f0)) { abort("사이클 시작 시 레벨업 다이얼로그가 아니다"); return null }
 
@@ -193,10 +194,11 @@ class LoopEngine(
         onLog("  대상 지정: $name")
         publish("prepare")
 
-        frame()?.let { if (Judge.isTitle(it)) { if (!login()) return false } }
-        dismissPopups()
+        if (!waitForGameReady()) return false
 
+        clearBlockers()
         tap(tCave); delay(5000)
+        clearBlockers()
         tap(tGridOpen); delay(4000)
 
         // 접근성으로 입력하므로 한글이 들어간다 (adb 로는 불가능했다)
@@ -225,19 +227,69 @@ class LoopEngine(
     }
 
     /**
-     * 게임을 새로 실행하면 이벤트·공지 팝업이 겹쳐 뜬다.
-     * 그 위에 탭을 날리면 엉뚱한 곳이 눌리므로 먼저 걷어낸다.
-     * 모르는 화면이면 억지로 누르지 않고 그대로 둔다 — 뒤 단계에서 검증이 걸린다.
+     * 게임이 자리를 잡을 때까지 기다리며 방해물을 걷어낸다.
+     *
+     * 앱이 게임을 띄우자마자 루프가 시작되는데, 그 시점엔 아직 로딩 중이라
+     * 팝업이 없다. 곧바로 진행하면 그 뒤에 뜬 팝업 위로 탭을 날리게 된다.
+     * 이벤트·공지 팝업은 로딩이 끝난 다음에 온다.
+     *
+     * 조용한 상태가 연속으로 확인될 때까지 기다린다.
+     * 모르는 화면이면 억지로 누르지 않는다 — 뒤 단계 검증이 걸러낸다.
      */
-    private suspend fun dismissPopups() {
-        repeat(6) {
+    /**
+     * 지금 화면을 가리는 팝업만 즉시 걷어낸다.
+     * 이벤트 팝업은 로딩이 끝나고도 한참 뒤에 뜨기 때문에,
+     * 단계를 넘어갈 때마다 한 번씩 확인해야 한다.
+     */
+    private suspend fun clearBlockers() {
+        repeat(5) {
+            // 게임 밖 창이 올라왔는가 (재난문자 · 전화 · 다른 앱 알림)
+            val pkg = a11y?.foregroundPackage()
+            if (pkg != null && pkg != GAME_PKG && pkg != ctx.packageName) {
+                onLog("    방해 창 감지: $pkg — 닫기 시도")
+                a11y?.dismissSystemDialog()
+                delay(2500)
+                return@repeat
+            }
             val f = frame() ?: return
+            // 공지 판정(isNotice)은 여기서 쓰지 않는다. 월드맵 하단도 어두워
+            // 오탐이 나고, 그러면 같은 자리를 계속 누르게 된다.
+            // 공지는 로그인 직후 문맥에서만 확인한다.
+            if (Judge.hasPopupCloseX(f)) {
+                onLog("    팝업 닫기"); tap(tPopupX); delay(2500)
+            } else return
+        }
+    }
+
+    private suspend fun waitForGameReady(timeoutMs: Long = 90000): Boolean {
+        onLog("    게임 준비 대기")
+        val end = System.currentTimeMillis() + timeoutMs
+        var quiet = 0
+        while (System.currentTimeMillis() < end) {
+            val f = frame()
+            if (f == null) { delay(1500); continue }
             when {
-                Judge.isNotice(f) -> { onLog("    공지 닫기"); tap(tNoticeClose); delay(4000) }
-                Judge.hasPopupCloseX(f) -> { onLog("    팝업 닫기"); tap(tPopupX); delay(2500) }
-                else -> return
+                Judge.isTitle(f) -> {
+                    onLog("    타이틀 화면 — 로그인부터")
+                    if (!login()) return false
+                    quiet = 0
+                }
+                Judge.isNotice(f) -> {
+                    onLog("    공지 닫기"); tap(tNoticeClose); delay(4000); quiet = 0
+                }
+                Judge.hasPopupCloseX(f) -> {
+                    onLog("    팝업 닫기"); tap(tPopupX); delay(2500); quiet = 0
+                }
+                else -> {
+                    quiet++
+                    // 이벤트 팝업은 공지보다 한참 뒤에 온다. 넉넉히 기다린다.
+                    if (quiet >= 7) { onLog("    게임 준비됨"); return true }
+                    delay(2500)
+                }
             }
         }
+        abort("게임이 준비되지 않았다 (팝업이 계속 뜨거나 로딩이 끝나지 않음)")
+        return false
     }
 
     /** 설정창을 열어 저장만 한다 (다이얼로그 복귀 없이). */
@@ -261,6 +313,7 @@ class LoopEngine(
 
     /** 레벨업 다이얼로그까지 들어간다. 용 패널은 토글이라 어긋나면 다시 시도한다. */
     private suspend fun openDialog(): Boolean {
+        clearBlockers()
         val f = frame()
         if (f != null && Judge.isTitle(f)) {
             onLog("  타이틀 화면 — 로그인부터")

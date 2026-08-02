@@ -135,6 +135,24 @@ class LoopAccessibilityService : AccessibilityService() {
 
     fun back() = performGlobalAction(GLOBAL_ACTION_BACK)
 
+    /** 지금 앞에 있는 창의 패키지. 게임이 아닌 것이 올라오면 방해물이다. */
+    fun foregroundPackage(): String? =
+        rootInActiveWindow?.let { r ->
+            try { r.packageName?.toString() } finally { runCatching { r.recycle() } }
+        }
+
+    /**
+     * 게임 밖 시스템 대화상자를 닫는다.
+     * 재난문자 · 전화 수신 · 앱 알림 등 루프 도중 언제든 끼어든다.
+     *
+     * 확인/닫기류 버튼을 글자로 찾아 누르고, 못 찾으면 뒤로가기로 물러난다.
+     * 전화는 받지도 끊지도 않는다 — 사람이 판단할 일이다.
+     */
+    fun dismissSystemDialog(): Boolean {
+        if (clickByText("확인", "닫기", "OK", "Close", "취소", "나중에", "무시")) return true
+        return performGlobalAction(GLOBAL_ACTION_BACK)
+    }
+
     companion object {
         private const val TAG = "DvLoopA11y"
 
