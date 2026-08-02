@@ -187,18 +187,38 @@ object Judge {
      * 켜짐 = 주황, 꺼짐 = 회색. 어느 쪽도 확실하지 않으면 null 이고 그때는 건드리지 않는다.
      */
     fun isFavorited(bmp: Bitmap): Boolean? {
-        val c = px(bmp, 1732, 936)
-        if (r(c) > 190 && g(c) > 110 && b(c) < 110 && r(c) > b(c) + 90) return true
-        if (kotlin.math.abs(r(c) - g(c)) < 30 && kotlin.math.abs(g(c) - b(c)) < 30 &&
-            r(c) in 61..189
-        ) return false
-        return null
+        // 한 점만 보면 별 모양의 빈틈에 걸린다. 격자로 훑는다.
+        // 실측: 꺼짐은 어두운 회색 (16~99, 채널 차이 거의 없음),
+        //       켜짐은 주황 (255,150,0 계열).
+        var orange = 0
+        var grey = 0
+        for (y in 920..950 step 10) {
+            for (x in 1715..1750 step 10) {
+                val c = px(bmp, x, y)
+                val spread = maxOf(r(c), g(c), b(c)) - minOf(r(c), g(c), b(c))
+                when {
+                    r(c) > 180 && b(c) < 120 && r(c) - b(c) > 90 -> orange++
+                    spread <= 24 && r(c) < 170 -> grey++
+                }
+            }
+        }
+        return when {
+            orange >= 3 -> true
+            grey >= 6 -> false
+            else -> null
+        }
     }
 
     /** 하이브로 아이디/비밀번호 입력 폼 (흰 입력칸 2개) */
-    fun isIdForm(bmp: Bitmap): Boolean =
-        listOf(ID_FIELD, PW_FIELD).all { p ->
-            val c = px(bmp, p.first, p.second)
-            minOf(r(c), g(c), b(c)) > 215
+    fun isIdForm(bmp: Bitmap): Boolean {
+        // 한두 점만 보면 로딩 화면의 흰 섬광을 입력폼으로 오판한다.
+        // 입력칸은 폭 전체가 균일한 흰 띠다. 가로로 여러 점을 보고 균일도까지 확인한다.
+        for (y in intArrayOf(461, 580)) {
+            val pts = intArrayOf(700, 950, 1200, 1450, 1650).map { px(bmp, it, y) }
+            if (pts.any { minOf(r(it), g(it), b(it)) < 215 }) return false
+            val sums = pts.map { r(it) + g(it) + b(it) }
+            if (sums.max() - sums.min() > 18) return false
         }
+        return true
+    }
 }

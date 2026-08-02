@@ -203,13 +203,18 @@ class LoopEngine(
 
         // 접근성으로 입력하므로 한글이 들어간다 (adb 로는 불가능했다)
         tap(tSearch); delay(2500)
-        typeText(name); delay(2000)
-        dumpFrame("after_type")
+        if (!typeText(name)) {
+            // 입력이 안 됐는데 그대로 진행하면 엉뚱한 용을 고른다.
+            // 게다가 키보드가 없는 상태에서 뒤로가기를 누르면
+            // 게임 종료 확인창이 떠버린다. 여기서 멈춘다.
+            abort("검색어를 입력하지 못했다")
+            return false
+        }
+        delay(1500)
 
-        // 키보드를 내리지 않으면 다음 탭이 키보드 위에 떨어진다.
-        // 실제로 삼성 키보드의 설정 톱니가 눌려 다른 화면으로 새어나갔다.
+        // 입력이 됐을 때만 키보드를 내린다.
+        // 키보드가 안 떠 있으면 이 뒤로가기가 게임 종료창을 띄운다.
         a11y?.back(); delay(2500)
-        dumpFrame("after_keyboard_close")
 
         tap(tFirstCell); delay(3000)
         tap(tGridClose); delay(3000)
