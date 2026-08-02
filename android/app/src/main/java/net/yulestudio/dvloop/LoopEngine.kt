@@ -415,15 +415,20 @@ class LoopEngine(
             if (!login()) return false
         }
         val item = if (setup.stage?.awakened == true) tItemAwaken else tItemNormal
-        repeat(3) { attempt ->
+        // 용 패널은 토글이다. 한 번 어긋나면 재시도마다 열고 닫기를 반복해
+        // 영원히 못 연다 (실제로 이렇게 멈췄다).
+        // 그래서 '닫혀 있다' 와 '이미 열려 있다' 를 번갈아 가정한다.
+        repeat(4) { attempt ->
+            // 알림 배너를 잘못 눌러 다른 앱이 떴을 수 있다. 매 시도마다 확인한다.
+            clearBlockers()
             frame()?.let { if (Judge.isTitle(it)) { abort("로그아웃 상태로 되돌아갔다"); return false } }
-            tap(tPanel); delay(4000)
+            if (attempt % 2 == 0) { tap(tPanel); delay(4000) }
             tap(tDragon); delay(3000)
             tap(item); delay(3000)
             if (waitFor(12000) { Judge.isLevelUpDialog(it) }) return true
-            onLog("    다이얼로그 미확인 (${attempt + 1}/3) — 재시도")
+            onLog("    다이얼로그 미확인 (${attempt + 1}/4) — 재시도")
         }
-        abort("레벨업 다이얼로그가 안 열린다 (3회 시도)")
+        abort("레벨업 다이얼로그가 안 열린다 (4회 시도)")
         return false
     }
 
