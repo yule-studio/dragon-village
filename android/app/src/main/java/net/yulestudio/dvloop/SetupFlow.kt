@@ -66,6 +66,16 @@ enum class Stage(val step: Int, val label: String, val hint: String, val awakene
 data class LoopSetup(
     val dragon: Dragon? = null,
     val stage: Stage? = null,
+    val currentLevel: Int = 1,
+    /**
+     * 지금 등급. 이 값을 유지하는 것이 목표다.
+     *
+     * 등급은 누적 평균이라 트리플 맥스면 그대로 유지되고, 하나라도 놓치면 떨어진다.
+     * 그래서 판정 자체는 뱃지 3개로 충분하다.
+     * 다만 7.0 은 육각형이 시안이라 색으로 교차검증까지 되고,
+     * 7.0 미만은 모두 금색이라 색만으로는 구분되지 않는다.
+     */
+    val currentGrade: Double = 7.0,
     val targetLevel: Int = 45,
 )
 
@@ -90,8 +100,11 @@ fun SetupFlow(
             1 -> StageStep(repo, setup.dragon, setup.stage) {
                 setup = setup.copy(stage = it); step = 2
             }
-            2 -> LevelStep(setup.targetLevel) {
-                setup = setup.copy(targetLevel = it); step = 3
+            2 -> CurrentStep(setup.currentLevel, setup.currentGrade) { lv, gr ->
+                setup = setup.copy(currentLevel = lv, currentGrade = gr); step = 3
+            }
+            3 -> LevelStep(setup.targetLevel.coerceAtLeast(setup.currentLevel + 1)) {
+                setup = setup.copy(targetLevel = it); step = 4
             }
             else -> ConfirmStep(repo, setup) { onStart(setup) }
         }
@@ -100,7 +113,7 @@ fun SetupFlow(
 
 @Composable
 private fun StepBar(step: Int, onBack: () -> Unit) {
-    val titles = listOf("드래곤", "단계", "목표 레벨", "확인")
+    val titles = listOf("드래곤", "단계", "현재 상태", "목표 레벨", "확인")
     Column(Modifier.padding(horizontal = 20.dp)) {
         Row(
             Modifier.fillMaxWidth().height(48.dp),
@@ -112,13 +125,13 @@ private fun StepBar(step: Int, onBack: () -> Unit) {
                 color = Ink,
                 modifier = Modifier.clickable(onClick = onBack).padding(end = 12.dp),
             )
-            Text("${step + 1}/4  ${titles[step]}", fontSize = 14.sp, color = Gray)
+            Text("${step + 1}/5  ${titles[step]}", fontSize = 14.sp, color = Gray)
         }
         Row(
             Modifier.fillMaxWidth().padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            repeat(4) { i ->
+            repeat(5) { i ->
                 Box(
                     Modifier
                         .weight(1f)
@@ -322,7 +335,74 @@ private fun StageStep(
     }
 }
 
-// ---------------- 3단계: 목표 레벨 ----------------
+// ---------------- 3단계: 현재 상태 ----------------
+
+@Composable
+private fun CurrentStep(level: Int, grade: Double, onNext: (Int, Double) -> Unit) {
+    var lv by remember { mutableStateOf(level) }
+    var gr by remember { mutableStateOf(grade) }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp),
+    ) {
+        Text("지금 상태를\n알려주세요", fontSize = 24.sp, lineHeight = 33.sp,
+            fontWeight = FontWeight.Bold, color = Ink)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "게임에서 그 드래곤의 레벨과 등급을 보고 그대로 넣어 주세요.\n" +
+                "이 등급을 지키면서 올립니다.",
+            fontSize = 14.sp, lineHeight = 21.sp, color = Gray,
+        )
+
+        Spacer(Modifier.height(32.dp))
+
+        Text("현재 레벨", fontSize = 13.sp, color = Gray, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StepperButton("−") { if (lv > 1) lv-- }
+            Text("Lv.$lv", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Blue,
+                modifier = Modifier.weight(1f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            StepperButton("+") { if (lv < 44) lv++ }
+        }
+
+        Spacer(Modifier.height(28.dp))
+
+        Text("현재 등급", fontSize = 13.sp, color = Gray, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StepperButton("−") { if (gr > 1.0) gr = ((gr - 0.1) * 10).toInt() / 10.0 }
+            Text(String.format("%.1f", gr), fontSize = 30.sp,
+                fontWeight = FontWeight.Bold, color = Blue,
+                modifier = Modifier.weight(1f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            StepperButton("+") { if (gr < 7.0) gr = ((gr + 0.1) * 10).toInt() / 10.0 }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            if (gr >= 6.95)
+                "7.0 은 육각형 색으로 한 번 더 확인할 수 있어요."
+            else
+                "7.0 미만은 색이 모두 금색이라, 능력치 MAX 세 개로만 판단해요.",
+            fontSize = 12.sp, lineHeight = 18.sp, color = Gray,
+        )
+
+        Spacer(Modifier.height(36.dp))
+        PrimaryButton("다음") { onNext(lv, gr) }
+        Spacer(Modifier.height(24.dp))
+    }
+}
+
+// ---------------- 4단계: 목표 레벨 ----------------
 
 @Composable
 private fun LevelStep(current: Int, onNext: (Int) -> Unit) {
@@ -422,6 +502,7 @@ private fun ConfirmStep(repo: DexRepository, setup: LoopSetup, onStart: () -> Un
             }
             Spacer(Modifier.height(16.dp))
             SummaryLine("단계", setup.stage?.label ?: "-")
+            SummaryLine("현재", "Lv.${setup.currentLevel} · 등급 ${String.format("%.1f", setup.currentGrade)}")
             SummaryLine("목표 레벨", "Lv.${setup.targetLevel}")
             SummaryLine(
                 "사용 아이템",

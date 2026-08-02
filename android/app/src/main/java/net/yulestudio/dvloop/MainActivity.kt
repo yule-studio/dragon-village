@@ -121,7 +121,7 @@ class MainActivity : ComponentActivity() {
                 running = true,
                 target = setup.dragon?.name ?: "대상 없음",
                 stage = setup.stage?.label ?: "-",
-                level = 0,
+                level = setup.currentLevel,
                 targetLevel = setup.targetLevel,
             )
         )

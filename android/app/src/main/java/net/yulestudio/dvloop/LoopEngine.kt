@@ -62,7 +62,10 @@ class LoopEngine(
 
     private var cycle = 0
     private var wins = 0
-    private var level = 0
+    private var level = setup.currentLevel
+
+    /** 7.0 은 육각형이 시안이라 색으로 교차검증이 된다. 그 미만은 모두 금색이라 불가. */
+    private val canVerifyGradeByColor = setup.currentGrade >= 6.95
 
     var abortReason: String? = null
         private set
@@ -114,7 +117,11 @@ class LoopEngine(
     // ---------------- 본체 ----------------
 
     suspend fun run(maxCycles: Int = 1000) {
-        onLog("루프 시작: ${setup.dragon?.name} → Lv.${setup.targetLevel}")
+        onLog(
+            "루프 시작: ${setup.dragon?.name} " +
+                "Lv.${setup.currentLevel} → Lv.${setup.targetLevel} " +
+                "(등급 ${String.format("%.1f", setup.currentGrade)} 유지)"
+        )
 
         if (a11y == null) { abort("접근성 서비스가 꺼져 있다"); return }
         if (!ScreenCapture.isReady) { abort("화면 캡처가 준비되지 않았다"); return }
@@ -167,14 +174,18 @@ class LoopEngine(
         val res = Judge.badges(f)
         val triple = res.values.all { it }
         val grade = Judge.gradeIs70(f)
-        val win = triple && grade == true
+
+        // 등급은 누적 평균이라 트리플 맥스면 지금 등급이 그대로 유지된다.
+        // 하나라도 놓치면 떨어진다. 그래서 판정 기준은 뱃지 3개다.
+        val win = triple
 
         val mark = res.entries.joinToString(" ") { "${it.key}${if (it.value) "O" else "X"}" }
         val gtxt = when (grade) { true -> "7.0"; false -> "7.0미만"; null -> "등급판정불가" }
         onLog("사이클 $cycle: $mark / $gtxt → ${if (win) "★트리플맥스★" else "실패"}")
 
-        // 뱃지와 등급이 어긋나면 내 판정 모델이 틀린 것이다. 저장하지 말고 멈춘다.
-        if (triple && grade != true) {
+        // 7.0 을 지키는 경우에만 색으로 교차검증이 가능하다.
+        // 뱃지는 MAX 인데 시안이 아니면 판정 모델이 틀린 것이므로 저장하지 않고 멈춘다.
+        if (canVerifyGradeByColor && triple && grade != true) {
             abort("판정 불일치 — 뱃지는 MAX 인데 등급이 7.0 이 아니다"); return null
         }
 

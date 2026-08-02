@@ -143,12 +143,18 @@ object Judge {
 
     /** 구글/페이스북/하이브로 선택 화면 */
     fun isLoginSelect(bmp: Bitmap): Boolean {
-        val gc = px(bmp, LOGIN_GOOGLE.first, LOGIN_GOOGLE.second)
-        val hc = px(bmp, LOGIN_HIGHBROW.first, LOGIN_HIGHBROW.second)
-        val google = r(gc) > 150 && r(gc) > g(gc) + 15
+        // 두 점만 보면 용 그림에도 걸린다(실제로 로그인된 상태를 로그인 화면으로 오판했다).
+        // 세 버튼의 아이콘 블록이 각각 주황(구글) · 파랑(페이스북) · 회색(하이브로) 인
+        // 조합까지 확인한다.
+        val gc = px(bmp, LOGIN_GOOGLE.first, LOGIN_GOOGLE.second)      // 구글 주황
+        val fc = px(bmp, 470, 573)                                      // 페이스북 파랑
+        val hc = px(bmp, LOGIN_HIGHBROW.first, LOGIN_HIGHBROW.second)  // 하이브로 회색
+
+        val google = r(gc) > 150 && r(gc) > g(gc) + 30 && r(gc) > b(gc) + 30
+        val facebook = b(fc) > 110 && b(fc) > r(fc) + 40 && b(fc) > g(fc) + 20
         val highbrow = kotlin.math.abs(r(hc) - g(hc)) < 30 &&
             kotlin.math.abs(g(hc) - b(hc)) < 30 && r(hc) in 71..209
-        return google && highbrow
+        return google && facebook && highbrow
     }
 
     /**
