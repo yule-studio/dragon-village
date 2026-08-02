@@ -287,7 +287,7 @@ class LoopEngine(
             clearBlockers()
             tap(tGridOpen); delay(4000)
             tap(tSearch); delay(2500)
-            if (typeText(name)) { typed = true; break }
+            if (typeText(name, tSearch)) { typed = true; break }
             onLog("    검색 진입 실패 ($attempt/3) — 되돌리고 재시도")
             tap(tCaveX); delay(3000)   // 어디에 있는지 모르니 동굴을 닫아 월드맵으로
         }
@@ -643,10 +643,12 @@ class LoopEngine(
     /** 아이디 입력폼에서 이어간다. */
     private suspend fun loginFromForm(): Boolean {
         tap(tId); delay(1500)
-        if (!typeText(creds.id)) { abort("아이디를 입력하지 못했다"); return false }
+        if (!typeText(creds.id, tId)) { abort("아이디 칸에 포커스가 오지 않았다"); return false }
         delay(800)
         tap(tPw); delay(1500)
-        if (!typeText(creds.password)) { abort("비밀번호를 입력하지 못했다"); return false }
+        // 여기서 칸을 확인하지 않으면 비밀번호가 아이디 칸에 평문으로 들어간다.
+        // 실제로 그렇게 되어 화면에 비밀번호가 그대로 보였다.
+        if (!typeText(creds.password, tPw)) { abort("비밀번호 칸에 포커스가 오지 않았다"); return false }
         delay(800)
         a11y?.back(); delay(1500)
         tap(tLogin); delay(8000)
@@ -670,13 +672,25 @@ class LoopEngine(
      * 실제로 아이디는 비고 비밀번호만 들어가는 일이 있었다.
      * 포커스가 생길 때까지 기다렸다가 넣고, 넣은 뒤 값까지 확인한다.
      */
-    private suspend fun typeText(text: String): Boolean {
+    private suspend fun typeText(text: String, at: Pair<Int, Int>? = null): Boolean {
         val s = a11y ?: return false
         repeat(12) {
             val root = s.rootInActiveWindow
             val focused = root?.findFocus(
                 android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT
             )
+            // 포커스가 '누른 그 칸' 인지 확인한다.
+            // 확인 없이 넣었다가 비밀번호가 아이디 칸에 들어가 화면에 그대로 보였다.
+            // 탭이 안 먹으면 포커스는 이전 칸에 남아 있고, SET_TEXT 는 그 칸을 덮어쓴다.
+            if (focused != null && at != null) {
+                val b = android.graphics.Rect()
+                focused.getBoundsInScreen(b)
+                if (!b.contains(at.first, at.second)) {
+                    runCatching { root.recycle() }
+                    delay(500)
+                    return@repeat
+                }
+            }
             if (focused != null) {
                 val args = android.os.Bundle().apply {
                     putCharSequence(
