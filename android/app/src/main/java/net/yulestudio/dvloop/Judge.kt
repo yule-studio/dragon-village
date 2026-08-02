@@ -152,6 +152,37 @@ object Judge {
         return greenOk && redOk
     }
 
+    /**
+     * 팝업의 빨간 X 닫기 버튼 (이벤트 · 공지 등).
+     * 게임을 새로 실행하면 이런 팝업이 뜬다. 월드맵에서는 그 자리가
+     * 보라/파랑 계열이라 빨강으로 구분된다.
+     */
+    fun hasPopupCloseX(bmp: Bitmap): Boolean {
+        // 실측: 빨간 육각형이 x 1840~1906, y 82~154 에 걸쳐 있고 중심은 (1873,117).
+        // 가운데는 흰 X 획이라 한 점만 보면 놓친다. 격자로 훑어 몇 점 이상이면 인정한다.
+        var hits = 0
+        for (y in 90..150 step 12) {
+            for (x in 1845..1900 step 12) {
+                val c = px(bmp, x, y)
+                if (r(c) > 150 && g(c) < 110 && b(c) < 110) hits++
+            }
+        }
+        return hits >= 4
+    }
+
+    /**
+     * 동굴 상세의 즐겨찾기 별.
+     * 켜짐 = 주황, 꺼짐 = 회색. 어느 쪽도 확실하지 않으면 null 이고 그때는 건드리지 않는다.
+     */
+    fun isFavorited(bmp: Bitmap): Boolean? {
+        val c = px(bmp, 1732, 936)
+        if (r(c) > 190 && g(c) > 110 && b(c) < 110 && r(c) > b(c) + 90) return true
+        if (kotlin.math.abs(r(c) - g(c)) < 30 && kotlin.math.abs(g(c) - b(c)) < 30 &&
+            r(c) in 61..189
+        ) return false
+        return null
+    }
+
     /** 하이브로 아이디/비밀번호 입력 폼 (흰 입력칸 2개) */
     fun isIdForm(bmp: Bitmap): Boolean =
         listOf(ID_FIELD, PW_FIELD).all { p ->

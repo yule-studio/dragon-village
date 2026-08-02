@@ -42,6 +42,16 @@ class LoopEngine(
     private val tSetX = 1647 to 87
     private val tSaveSafe = 842 to 890         // 저장 버튼 안, 계정삭제에서 가장 먼 지점
     private val tNoticeClose = 1170 to 1013
+    private val tPopupX = 1873 to 117
+
+    // 동굴 (대상 지정)
+    private val tCave = 1714 to 88
+    private val tGridOpen = 532 to 523
+    private val tGridClose = 2003 to 523
+    private val tSearch = 1515 to 103
+    private val tFirstCell = 359 to 246
+    private val tStar = 1732 to 936
+    private val tCaveX = 2012 to 53
 
     // 로그인
     private val tStart = 1170 to 540
@@ -75,7 +85,20 @@ class LoopEngine(
     private fun abort(reason: String) {
         abortReason = reason
         onLog("!! 중단: $reason")
+        dumpFrame("abort")
         LoopStatus.requestStop()
+    }
+
+    /** 무엇을 보고 판단했는지 남긴다. 좌표가 어긋날 때 이것 없이는 원인을 못 찾는다. */
+    private fun dumpFrame(tag: String) {
+        val f = frame() ?: return
+        runCatching {
+            val dir = ctx.getExternalFilesDir(null) ?: return
+            java.io.File(dir, "frame_$tag.png").outputStream().use {
+                f.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+            onLog("   프레임 저장: ${f.width}x${f.height} → frame_$tag.png")
+        }
     }
 
     private fun publish(phase: String) {
@@ -96,6 +119,7 @@ class LoopEngine(
         if (a11y == null) { abort("접근성 서비스가 꺼져 있다"); return }
         if (!ScreenCapture.isReady) { abort("화면 캡처가 준비되지 않았다"); return }
 
+        if (!prepareTarget()) return
         if (!openDialog()) return
 
         while (cycle < maxCycles && !LoopStatus.stopRequested && abortReason == null) {
@@ -118,6 +142,7 @@ class LoopEngine(
             } else {
                 publish("desak")
                 if (!desak()) return
+                // 즐겨찾기는 서버에 남아 데삭 후에도 유지된다. 대상 지정을 다시 할 필요가 없다.
                 if (!openDialog()) return
             }
         }
@@ -154,6 +179,84 @@ class LoopEngine(
 
         tap(tResultOk); delay(3000)
         return win
+    }
+
+    /**
+     * 대상 지정. 동굴에서 이름으로 찾아 고르고 즐겨찾기를 켠 뒤 저장한다.
+     *
+     * 데삭은 동굴 선택을 초기화한다. 즐겨찾기는 서버에 남으므로,
+     * 별을 켜두면 매 사이클마다 사이드 패널 1번 슬롯에 그 용이 온다.
+     * 이 단계가 없으면 엉뚱한 용에 아이템을 쓴다.
+     */
+    private suspend fun prepareTarget(): Boolean {
+        val name = setup.dragon?.name ?: run { abort("대상 이름이 없다"); return false }
+        onLog("  대상 지정: $name")
+        publish("prepare")
+
+        frame()?.let { if (Judge.isTitle(it)) { if (!login()) return false } }
+        dismissPopups()
+
+        tap(tCave); delay(5000)
+        tap(tGridOpen); delay(4000)
+
+        // 접근성으로 입력하므로 한글이 들어간다 (adb 로는 불가능했다)
+        tap(tSearch); delay(2000)
+        typeText(name); delay(3000)
+
+        tap(tFirstCell); delay(3000)
+        tap(tGridClose); delay(3000)
+
+        val f = frame() ?: run { abort("동굴 화면을 읽지 못했다"); return false }
+        when (Judge.isFavorited(f)) {
+            true -> onLog("    즐겨찾기 이미 켜져 있음")
+            false -> {
+                tap(tStar); delay(3000)
+                val after = frame()
+                if (after == null || Judge.isFavorited(after) != true) {
+                    abort("즐겨찾기를 켜지 못했다"); return false
+                }
+                onLog("    즐겨찾기 켬")
+            }
+            null -> { abort("즐겨찾기 상태를 판정할 수 없다"); return false }
+        }
+
+        tap(tCaveX); delay(4000)
+        return saveOnly()
+    }
+
+    /**
+     * 게임을 새로 실행하면 이벤트·공지 팝업이 겹쳐 뜬다.
+     * 그 위에 탭을 날리면 엉뚱한 곳이 눌리므로 먼저 걷어낸다.
+     * 모르는 화면이면 억지로 누르지 않고 그대로 둔다 — 뒤 단계에서 검증이 걸린다.
+     */
+    private suspend fun dismissPopups() {
+        repeat(6) {
+            val f = frame() ?: return
+            when {
+                Judge.isNotice(f) -> { onLog("    공지 닫기"); tap(tNoticeClose); delay(4000) }
+                Judge.hasPopupCloseX(f) -> { onLog("    팝업 닫기"); tap(tPopupX); delay(2500) }
+                else -> return
+            }
+        }
+    }
+
+    /** 설정창을 열어 저장만 한다 (다이얼로그 복귀 없이). */
+    private suspend fun saveOnly(): Boolean {
+        var ok = false
+        repeat(3) { attempt ->
+            tap(tMenu); delay(2000)
+            tap(tSettings); delay(3000)
+            frame()?.let { if (Judge.isSettingsOpen(it)) ok = true }
+            if (ok) return@repeat
+            onLog("    설정창 미확인 (${attempt + 1}/3) — 재시도")
+        }
+        if (!ok) { abort("설정창 검증 3회 실패"); return false }
+        tap(tSaveSafe); delay(3000)
+        tap(tSaveOk); delay(2000)
+        tap(tSetX); delay(2000)
+        tap(tMenu); delay(2000)
+        onLog("    저장 완료 (복구 지점)")
+        return true
     }
 
     /** 레벨업 다이얼로그까지 들어간다. 용 패널은 토글이라 어긋나면 다시 시도한다. */

@@ -55,8 +55,11 @@ object ScreenCapture {
         @Suppress("DEPRECATION")
         (ctx.getSystemService(Context.WINDOW_SERVICE) as WindowManager)
             .defaultDisplay.getRealMetrics(metrics)
-        width = metrics.widthPixels
-        height = metrics.heightPixels
+        // 게임은 항상 가로다. 캡처면도 가로로 만든다.
+        // 앱이 세로 고정이라 이 시점 화면은 세로인데, 그대로 만들면
+        // 게임이 세로 캔버스에 레터박스로 들어가 판정 좌표가 전부 어긋난다.
+        width = maxOf(metrics.widthPixels, metrics.heightPixels)
+        height = minOf(metrics.widthPixels, metrics.heightPixels)
         density = metrics.densityDpi
 
         p.registerCallback(object : MediaProjection.Callback() {
