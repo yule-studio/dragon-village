@@ -44,14 +44,17 @@ class DexRepository(private val ctx: Context) {
             if (it.moveToFirst()) it.getInt(0) else 0
         }
 
-    /** 이름 부분일치 검색. query 가 비면 도감 번호 순으로 앞에서부터. */
-    fun search(query: String = "", limit: Int = 100): List<Dragon> {
+    /**
+     * 이름 부분일치 검색. query 가 비면 도감 번호 순으로 앞에서부터.
+     * offset 으로 이어 읽어 무한 스크롤에 쓴다.
+     */
+    fun search(query: String = "", limit: Int = 40, offset: Int = 0): List<Dragon> {
         val sql = if (query.isBlank())
-            "SELECT dragon_no,name,attr,type,gen FROM dragon ORDER BY dragon_no LIMIT ?"
+            "SELECT dragon_no,name,attr,type,gen FROM dragon ORDER BY dragon_no LIMIT ? OFFSET ?"
         else
-            "SELECT dragon_no,name,attr,type,gen FROM dragon WHERE name LIKE ? ORDER BY dragon_no LIMIT ?"
-        val args = if (query.isBlank()) arrayOf("$limit")
-        else arrayOf("%$query%", "$limit")
+            "SELECT dragon_no,name,attr,type,gen FROM dragon WHERE name LIKE ? ORDER BY dragon_no LIMIT ? OFFSET ?"
+        val args = if (query.isBlank()) arrayOf("$limit", "$offset")
+        else arrayOf("%$query%", "$limit", "$offset")
 
         return db.rawQuery(sql, args).use { c ->
             buildList {
