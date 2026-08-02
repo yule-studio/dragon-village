@@ -202,8 +202,14 @@ class LoopEngine(
         tap(tGridOpen); delay(4000)
 
         // 접근성으로 입력하므로 한글이 들어간다 (adb 로는 불가능했다)
-        tap(tSearch); delay(2000)
-        typeText(name); delay(3000)
+        tap(tSearch); delay(2500)
+        typeText(name); delay(2000)
+        dumpFrame("after_type")
+
+        // 키보드를 내리지 않으면 다음 탭이 키보드 위에 떨어진다.
+        // 실제로 삼성 키보드의 설정 톱니가 눌려 다른 화면으로 새어나갔다.
+        a11y?.back(); delay(2500)
+        dumpFrame("after_keyboard_close")
 
         tap(tFirstCell); delay(3000)
         tap(tGridClose); delay(3000)
@@ -272,6 +278,19 @@ class LoopEngine(
                 Judge.isTitle(f) -> {
                     onLog("    타이틀 화면 — 로그인부터")
                     if (!login()) return false
+                    quiet = 0
+                }
+                // 로그인 선택/입력 화면도 '로그아웃 상태' 다.
+                // 이걸 안 보고 준비됐다고 판단해서, 로그인 화면 위로
+                // 동굴·검색 탭을 날리다 삼성 키보드 설정까지 들어갔다.
+                Judge.isLoginSelect(f) -> {
+                    onLog("    로그인 선택 화면 — 하이브로로 로그인")
+                    if (!loginFromSelect()) return false
+                    quiet = 0
+                }
+                Judge.isIdForm(f) -> {
+                    onLog("    아이디 입력폼 — 자격증명 입력")
+                    if (!loginFromForm()) return false
                     quiet = 0
                 }
                 Judge.isNotice(f) -> {
@@ -408,17 +427,28 @@ class LoopEngine(
         if (!waitFor(20000) { Judge.isLoginSelect(it) }) {
             abort("로그인 선택 화면이 아니다 (구글 자동로그인 의심)"); return false
         }
+        return loginFromSelect()
+    }
+
+    /** 로그인 선택 화면(구글/페북/하이브로)에서 이어간다. */
+    private suspend fun loginFromSelect(): Boolean {
         tap(tHighbrow); delay(3000)
 
         // 하이브로 입력폼이 떠야만 자격증명을 넣는다
         if (!waitFor(15000) { Judge.isIdForm(it) }) {
             abort("하이브로 아이디 입력폼이 안 뜬다 — 잘못된 로그인 경로"); return false
         }
+        return loginFromForm()
+    }
 
+    /** 아이디 입력폼에서 이어간다. */
+    private suspend fun loginFromForm(): Boolean {
         tap(tId); delay(1500)
-        typeText(creds.id); delay(800)
+        if (!typeText(creds.id)) { abort("아이디를 입력하지 못했다"); return false }
+        delay(800)
         tap(tPw); delay(1500)
-        typeText(creds.password); delay(800)
+        if (!typeText(creds.password)) { abort("비밀번호를 입력하지 못했다"); return false }
+        delay(800)
         a11y?.back(); delay(1500)
         tap(tLogin); delay(8000)
 
@@ -434,28 +464,39 @@ class LoopEngine(
         return true
     }
 
-    /** 접근성으로 입력칸에 글자를 넣는다. adb 와 달리 한글도 들어간다. */
-    private fun typeText(text: String) {
-        val s = a11y ?: return
-        val root = s.rootInActiveWindow ?: return
-        try {
-            val focused = root.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
-            if (focused == null) {
-                Log.w("DvLoop", "입력 포커스를 찾지 못했다")
-                return
-            }
-            val args = android.os.Bundle().apply {
-                putCharSequence(
-                    android.view.accessibility.AccessibilityNodeInfo
-                        .ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-                    text,
-                )
-            }
-            focused.performAction(
-                android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args
+    /**
+     * 접근성으로 입력칸에 글자를 넣는다. adb 와 달리 한글도 들어간다.
+     *
+     * 입력칸을 탭한 직후에는 포커스가 아직 잡히지 않는다.
+     * 실제로 아이디는 비고 비밀번호만 들어가는 일이 있었다.
+     * 포커스가 생길 때까지 기다렸다가 넣고, 넣은 뒤 값까지 확인한다.
+     */
+    private suspend fun typeText(text: String): Boolean {
+        val s = a11y ?: return false
+        repeat(12) {
+            val root = s.rootInActiveWindow
+            val focused = root?.findFocus(
+                android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT
             )
-        } finally {
-            runCatching { root.recycle() }
+            if (focused != null) {
+                val args = android.os.Bundle().apply {
+                    putCharSequence(
+                        android.view.accessibility.AccessibilityNodeInfo
+                            .ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                        text,
+                    )
+                }
+                val ok = focused.performAction(
+                    android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args
+                )
+                runCatching { root.recycle() }
+                if (ok) return true
+            } else {
+                runCatching { root?.recycle() }
+            }
+            delay(500)
         }
+        onLog("    !! 입력 포커스를 찾지 못했다")
+        return false
     }
 }
