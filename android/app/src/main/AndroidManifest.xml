@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="false"
@@ -19,6 +20,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:screenOrientation="portrait"
             android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -29,6 +31,12 @@
         <service
             android:name=".FloatingService"
             android:exported="false" />
+
+        <!-- 화면 캡처는 포그라운드 서비스가 떠 있어야 시작할 수 있다 -->
+        <service
+            android:name=".LoopService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <!-- 게임 화면을 대신 눌러주는 서비스. 사용자가 설정에서 직접 켜야 한다 -->
         <service
@@ -48,5 +56,6 @@
     <!-- Android 11+ 에서 다른 앱을 실행하려면 명시적으로 선언해야 한다 -->
     <queries>
         <package android:name="com.highbrow.game" />
+        <package android:name="com.android.settings" />
     </queries>
 </manifest>
