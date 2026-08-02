@@ -66,6 +66,16 @@ class LoopPrefs(ctx: Context) {
         )
     }
 
+    /**
+     * 대상 지정(동굴 검색 → 즐겨찾기)을 마친 드래곤 번호.
+     *
+     * 즐겨찾기는 서버에 남아 데삭 후에도 유지된다.
+     * 한 번 지정했으면 목표를 끝낼 때까지 다시 할 이유가 없다.
+     */
+    var preparedNo: Int
+        get() = p.getInt(KEY_PREPARED, 0)
+        set(v) = p.edit().putInt(KEY_PREPARED, v).apply()
+
     fun clear() = p.edit().clear().apply()
 
     private companion object {
@@ -75,5 +85,6 @@ class LoopPrefs(ctx: Context) {
         const val KEY_LEVEL = "level"
         const val KEY_GRADE = "grade"
         const val KEY_TARGET = "target"
+        const val KEY_PREPARED = "prepared_no"
     }
 }

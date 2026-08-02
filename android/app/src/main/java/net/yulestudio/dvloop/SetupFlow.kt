@@ -342,10 +342,11 @@ private fun CurrentStep(level: Int, grade: Double, onNext: (Int, Double) -> Unit
     var lv by remember { mutableStateOf(level) }
     var gr by remember { mutableStateOf(grade) }
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp),
-    ) {
+    // 내용은 위, 버튼은 아래. 엄지가 닿는 자리에 행동을 둔다.
+    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+      Column(
+        Modifier.weight(1f).verticalScroll(rememberScrollState()),
+      ) {
         Text("지금 상태를\n알려주세요", fontSize = 24.sp, lineHeight = 33.sp,
             fontWeight = FontWeight.Bold, color = Ink)
         Spacer(Modifier.height(8.dp))
@@ -396,9 +397,10 @@ private fun CurrentStep(level: Int, grade: Double, onNext: (Int, Double) -> Unit
             fontSize = 12.sp, lineHeight = 18.sp, color = Gray,
         )
 
-        Spacer(Modifier.height(36.dp))
-        PrimaryButton("다음") { onNext(lv, gr) }
         Spacer(Modifier.height(24.dp))
+      }
+      PrimaryButton("다음") { onNext(lv, gr) }
+      Spacer(Modifier.height(24.dp))
     }
 }
 

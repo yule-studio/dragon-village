@@ -142,19 +142,50 @@ object Judge {
     }
 
     /** 구글/페이스북/하이브로 선택 화면 */
+    /**
+     * 구글/페이스북/하이브로 선택 화면.
+     *
+     * 버튼 y 위치가 화면마다 조금씩 달라진다(실측: 구글 390 · 페북 575 · 하이브로 760,
+     * 다른 회차에는 386/573/759). 고정 좌표로 보면 놓친다.
+     * x=470 세로줄을 훑어 주황 → 파랑 → 회색이 이 순서로 나타나는지 본다.
+     */
     fun isLoginSelect(bmp: Bitmap): Boolean {
-        // 두 점만 보면 용 그림에도 걸린다(실제로 로그인된 상태를 로그인 화면으로 오판했다).
-        // 세 버튼의 아이콘 블록이 각각 주황(구글) · 파랑(페이스북) · 회색(하이브로) 인
-        // 조합까지 확인한다.
-        val gc = px(bmp, LOGIN_GOOGLE.first, LOGIN_GOOGLE.second)      // 구글 주황
-        val fc = px(bmp, 470, 573)                                      // 페이스북 파랑
-        val hc = px(bmp, LOGIN_HIGHBROW.first, LOGIN_HIGHBROW.second)  // 하이브로 회색
+        var google = -1
+        var facebook = -1
+        var highbrow = -1
+        var y = 280
+        while (y <= 900) {
+            val c = px(bmp, 470, y)
+            when {
+                r(c) > 150 && r(c) > g(c) + 30 && r(c) > b(c) + 30 ->
+                    if (google < 0) google = y
+                b(c) > 110 && b(c) > r(c) + 40 && b(c) > g(c) + 20 ->
+                    if (facebook < 0 && google >= 0) facebook = y
+                kotlin.math.abs(r(c) - g(c)) < 30 && kotlin.math.abs(g(c) - b(c)) < 30 &&
+                    r(c) in 71..209 ->
+                    if (highbrow < 0 && facebook >= 0) highbrow = y
+            }
+            y += 15
+        }
+        return google >= 0 && facebook > google && highbrow > facebook
+    }
 
-        val google = r(gc) > 150 && r(gc) > g(gc) + 30 && r(gc) > b(gc) + 30
-        val facebook = b(fc) > 110 && b(fc) > r(fc) + 40 && b(fc) > g(fc) + 20
-        val highbrow = kotlin.math.abs(r(hc) - g(hc)) < 30 &&
-            kotlin.math.abs(g(hc) - b(hc)) < 30 && r(hc) in 71..209
-        return google && facebook && highbrow
+    /** 하이브로 버튼의 실제 y 좌표. 못 찾으면 null. */
+    fun highbrowButtonY(bmp: Bitmap): Int? {
+        var facebookSeen = false
+        var y = 280
+        var first = -1
+        while (y <= 900) {
+            val c = px(bmp, 470, y)
+            if (b(c) > 110 && b(c) > r(c) + 40 && b(c) > g(c) + 20) facebookSeen = true
+            else if (facebookSeen && kotlin.math.abs(r(c) - g(c)) < 30 &&
+                kotlin.math.abs(g(c) - b(c)) < 30 && r(c) in 71..209
+            ) {
+                if (first < 0) first = y
+            }
+            y += 15
+        }
+        return if (first < 0) null else first + 45   // 블록 가운데쯤
     }
 
     /**
@@ -168,6 +199,22 @@ object Judge {
         val greenOk = g(s) > 100 && g(s) > r(s) + 30 && g(s) > b(s) + 30
         val redOk = r(d) > 140 && r(d) > g(d) + 60 && r(d) > b(d) + 60
         return greenOk && redOk
+    }
+
+    /**
+     * 동굴 상세 화면인지. 좌측 목록 위의 'EVAL' 금색 버튼으로 판정한다.
+     * 루프는 월드맵에서 시작한다고 가정하는데, 동굴에 남아 있으면
+     * 용 패널 탭이 먹지 않아 다이얼로그가 안 열린다.
+     */
+    fun isCaveScreen(bmp: Bitmap): Boolean {
+        var gold = 0
+        for (y in 95..125 step 10) {
+            for (x in 330..420 step 15) {
+                val c = px(bmp, x, y)
+                if (r(c) > 170 && g(c) > 120 && b(c) < 110 && r(c) - b(c) > 80) gold++
+            }
+        }
+        return gold >= 5
     }
 
     /**

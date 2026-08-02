@@ -126,7 +126,19 @@ class LoopEngine(
         if (a11y == null) { abort("접근성 서비스가 꺼져 있다"); return }
         if (!ScreenCapture.isReady) { abort("화면 캡처가 준비되지 않았다"); return }
 
-        if (!prepareTarget()) return
+        // 대상 지정은 한 번만 한다.
+        // 즐겨찾기는 서버에 남아 데삭 후에도 유지되므로, 목표를 끝낼 때까지
+        // 매번 동굴에 들어갈 이유가 없다. 매번 하면 시간도 들고,
+        // 좌표가 빗나갈 때마다 엉뚱한 용을 건드릴 위험만 커진다.
+        val prefs = LoopPrefs(ctx)
+        val no = setup.dragon?.no ?: 0
+        if (prefs.preparedNo == no && no != 0) {
+            onLog("  대상 지정 건너뜀 (이미 즐겨찾기됨)")
+            if (!waitForGameReady()) return
+        } else {
+            if (!prepareTarget()) return
+            prefs.preparedNo = no
+        }
         if (!openDialog()) return
 
         while (cycle < maxCycles && !LoopStatus.stopRequested && abortReason == null) {
@@ -274,6 +286,16 @@ class LoopEngine(
      */
     private suspend fun clearBlockers() {
         repeat(5) {
+            // 동굴에 남아 있으면 월드맵으로 되돌린다.
+            // 루프는 월드맵에서 시작한다고 가정하므로, 동굴에 있으면
+            // 용 패널 탭이 먹지 않아 다이얼로그가 안 열린다.
+            frame()?.let {
+                if (Judge.isCaveScreen(it)) {
+                    onLog("    동굴에 있음 — 월드맵으로 되돌림")
+                    tap(tCaveX); delay(4000)
+                    return@repeat
+                }
+            }
             // 게임 밖 창이 올라왔는가 (재난문자 · 전화 · 다른 앱 알림)
             val pkg = a11y?.foregroundPackage()
             if (pkg != null && pkg != GAME_PKG && pkg != ctx.packageName) {
@@ -410,21 +432,41 @@ class LoopEngine(
         onLog("  데삭 실행")
         val s = a11y ?: run { abort("접근성 서비스가 꺼졌다"); return false }
 
+        // 설정 앱이 이미 다른 화면(예: 접근성)에 열려 있으면 그 화면이 그대로
+        // 재사용되어 앱 정보가 뜨지 않는다. CLEAR_TASK 로 새로 띄운다.
         ctx.startActivity(
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                 data = Uri.parse("package:$GAME_PKG")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TASK
+                )
             }
         )
-        // 설정 화면이 뜨고 접근성 트리가 채워지기까지 시간이 걸린다.
-        // 8초로는 모자라 '앱 정보 화면을 찾지 못했다' 로 멈췄다.
-        if (!s.waitForText("저장공간", "저장 공간", "Storage", timeoutMs = 20000)) {
-            abort("앱 정보 화면을 찾지 못했다"); return false
+        delay(2500)
+        onLog("    설정 화면: pkg=${s.foregroundPackage()} 저장공간=${s.hasText("저장공간")}")
+
+        // ★ 드빌의 앱 정보 화면이 맞는지 먼저 확인한다.
+        // 설정 앱이 다른 화면(접근성 등)에 열려 있으면 그 화면이 그대로 남는데,
+        // 그때 '데이터 삭제' 를 글자로 찾다가 그 화면의 토글을 눌러
+        // 드빌 매크로 자신의 접근성을 꺼버린 적이 있다.
+        // 게임 앱 이름은 '드래곤빌리지' 가 아니라 '드빌' 이다(실측).
+        if (!s.waitForText("애플리케이션 정보", "앱 정보", "App info", timeoutMs = 15000) ||
+            !s.hasText("드빌")
+        ) {
+            abort("드빌의 앱 정보 화면이 아니다 — 아무것도 누르지 않고 멈춘다")
+            return false
+        }
+
+        // '저장공간' 은 한 화면에 안 들어온다. 스크롤해서 찾는다.
+        if (!s.scrollUntilText("저장공간", "저장 공간", "Storage")) {
+            abort("저장공간 항목을 찾지 못했다"); return false
         }
         if (!clickRetry(s, 3, "저장공간", "저장 공간", "Storage")) {
             abort("저장공간 항목을 누르지 못했다"); return false
         }
-        if (!s.waitForText("데이터 삭제", "Clear data", timeoutMs = 20000)) {
+        delay(1500)
+        if (!s.scrollUntilText("데이터 삭제", "Clear data")) {
             abort("저장공간 화면을 찾지 못했다"); return false
         }
         if (!clickRetry(s, 3, "데이터 삭제", "Clear data")) {
@@ -472,7 +514,9 @@ class LoopEngine(
 
     /** 로그인 선택 화면(구글/페북/하이브로)에서 이어간다. */
     private suspend fun loginFromSelect(): Boolean {
-        tap(tHighbrow); delay(3000)
+        // 버튼 y 가 회차마다 달라 실제 위치를 찾아 누른다
+        val hy = frame()?.let { Judge.highbrowButtonY(it) } ?: tHighbrow.second
+        a11y?.tap(tHighbrow.first, hy); delay(3000)
 
         // 하이브로 입력폼이 떠야만 자격증명을 넣는다
         if (!waitFor(15000) { Judge.isIdForm(it) }) {

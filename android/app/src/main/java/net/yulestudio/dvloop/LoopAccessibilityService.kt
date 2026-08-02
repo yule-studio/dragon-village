@@ -135,6 +135,36 @@ class LoopAccessibilityService : AccessibilityService() {
 
     fun back() = performGlobalAction(GLOBAL_ACTION_BACK)
 
+    /**
+     * 글자를 찾을 때까지 아래로 스크롤한다.
+     * 설정 앱의 '저장공간' 은 한 화면에 안 들어와 스크롤해야 보인다.
+     */
+    suspend fun scrollUntilText(vararg candidates: String, maxScrolls: Int = 6): Boolean {
+        repeat(maxScrolls) {
+            if (hasText(*candidates)) return true
+            val root = rootInActiveWindow ?: return false
+            val scrolled = try {
+                findScrollable(root)?.performAction(
+                    AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+                ) ?: false
+            } finally {
+                runCatching { root.recycle() }
+            }
+            if (!scrolled) return hasText(*candidates)
+            delay(900)
+        }
+        return hasText(*candidates)
+    }
+
+    private fun findScrollable(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.isScrollable) return node
+        for (i in 0 until node.childCount) {
+            findScrollable(node.getChild(i))?.let { return it }
+        }
+        return null
+    }
+
     /** 지금 앞에 있는 창의 패키지. 게임이 아닌 것이 올라오면 방해물이다. */
     fun foregroundPackage(): String? =
         rootInActiveWindow?.let { r ->
