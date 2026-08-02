@@ -236,6 +236,33 @@ object Judge {
     }
 
     /**
+     * X 없이 `확인` 버튼만 있는 모달 팝업의 버튼 y 좌표. 없으면 null.
+     *
+     * 하루 한 번 뜨는 보물상자 팝업이 이 모양이다. 닫기 X 가 없어
+     * hasPopupCloseX 로는 못 잡았고, 모든 탭이 이 모달에 막혀 루프가 멈췄다.
+     *
+     * 생김새: 가운데에 파란 버튼, 그 양옆은 크림색 패널.
+     * 실측 — 버튼 (0,101,173) · 패널 (206,182,164).
+     * 버튼 하나만 보면 게임 곳곳의 파란 UI 에 걸리므로
+     * **양옆이 크림색 패널인지**를 함께 본다.
+     */
+    fun confirmPopupY(bmp: Bitmap): Int? {
+        for (y in 780..900 step 12) {
+            val blue = (1080..1250 step 42).all { x ->
+                val c = px(bmp, x, y)
+                b(c) > 130 && b(c) - r(c) > 90 && g(c) < b(c)
+            }
+            if (!blue) continue
+            val cream = intArrayOf(760, 1580).all { x ->
+                val c = px(bmp, x, y)
+                r(c) > 180 && r(c) - b(c) > 25 && g(c) in b(c)..r(c)
+            }
+            if (cream) return y
+        }
+        return null
+    }
+
+    /**
      * 동굴 상세의 즐겨찾기 별.
      * 켜짐 = 주황, 꺼짐 = 회색. 어느 쪽도 확실하지 않으면 null 이고 그때는 건드리지 않는다.
      */

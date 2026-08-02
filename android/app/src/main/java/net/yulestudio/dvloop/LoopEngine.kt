@@ -310,6 +310,13 @@ class LoopEngine(
             // 공지는 로그인 직후 문맥에서만 확인한다.
             if (Judge.hasPopupCloseX(f)) {
                 onLog("    팝업 닫기"); tap(tPopupX); delay(2500)
+                return@repeat
+            }
+            // X 없이 '확인' 만 있는 모달 (보물상자 등).
+            // 레벨업 다이얼로그를 잘못 건드리지 않도록 그때는 손대지 않는다.
+            val cy = if (Judge.isLevelUpDialog(f)) null else Judge.confirmPopupY(f)
+            if (cy != null) {
+                onLog("    확인 팝업 닫기 (y=$cy)"); tap(1166 to cy); delay(2500)
             } else return
         }
     }
@@ -374,6 +381,11 @@ class LoopEngine(
                 }
                 Judge.hasPopupCloseX(f) -> {
                     onLog("    팝업 닫기"); tap(tPopupX); delay(2500); quiet = 0
+                }
+                // X 없이 '확인' 만 있는 모달 (보물상자 등)
+                Judge.confirmPopupY(f) != null -> {
+                    val cy = Judge.confirmPopupY(f)!!
+                    onLog("    확인 팝업 닫기 (y=$cy)"); tap(1166 to cy); delay(2500); quiet = 0
                 }
                 else -> {
                     quiet++
