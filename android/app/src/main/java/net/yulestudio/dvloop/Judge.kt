@@ -318,7 +318,7 @@ object Judge {
         for (i in 2 until runs.size) {
             val (a, b) = runs[i]
             val pat = glyphBits(bmp, a, b)
-            val d = LEVEL_DIGITS[pat] ?: return null to pat
+            val d = nearestDigit(pat, LEVEL_DIGITS) ?: return null to pat
             value = value * 10 + d
         }
         return value to null
@@ -375,6 +375,77 @@ object Judge {
         "000000001111100100011000001100011100000110000001111000110011110" to 3,
         "000000000011100011110001011001001101100110111111100001100000110" to 4,
         "000000001111101100011110001001111100111111110001111000110111110" to 8,
+        "000000001111101100010110001111101110010011000001101001100011100" to 9,
+    )
+
+    /**
+     * 무늬가 가장 가까운 숫자.
+     *
+     * 똑같이 생긴 숫자라도 화면마다 한두 칸씩 흔들린다 (같은 '5' 끼리 최대 5칸 차이).
+     * 정확히 일치하는 것만 인정하면 아는 숫자도 못 읽는다.
+     * 대신 다른 숫자와는 17칸 넘게 벌어지므로, 가장 가까운 것이 확실히 앞설 때만 받는다.
+     * 애매하면 null 이다 — 찍지 않는다.
+     */
+    private fun nearestDigit(pat: String, table: Map<String, Int>): Int? {
+        var best = -1
+        var bestD = Int.MAX_VALUE
+        var secondD = Int.MAX_VALUE
+        for ((t, d) in table) {
+            var dist = 0
+            for (i in pat.indices) if (pat[i] != t[i]) dist++
+            if (dist < bestD) { secondD = bestD; bestD = dist; best = d }
+            else if (dist < secondD) secondD = dist
+        }
+        return if (bestD <= 8 && secondD - bestD >= 4) best else null
+    }
+
+    /**
+     * 레벨업 창에 찍힌 등급 (X.Y).
+     *
+     * 육각형이 늘 같은 자리에 있어 칸을 고정해도 된다. 위쪽 y 618 아래만 본다 —
+     * 그 위는 육각형의 흰 반사광이라 글자가 아니다.
+     *
+     * @return 읽은 등급. 모르는 모양이면 null 과 그 모양.
+     */
+    fun readGrade(bmp: Bitmap): Pair<Double?, String?> {
+        val p1 = gradeCell(bmp, 652, 692)
+        val p2 = gradeCell(bmp, 703, 737)
+        val d1 = nearestDigit(p1, GRADE_ONES) ?: return null to p1
+        val d2 = nearestDigit(p2, GRADE_TENTHS) ?: return null to p2
+        return (d1 + d2 / 10.0) to null
+    }
+
+    private fun gradeCell(bmp: Bitmap, x0: Int, x1: Int): String {
+        val w = x1 - x0 + 1
+        val h = 652 - 618 + 1
+        val sb = StringBuilder()
+        for (gy in 0 until 9) {
+            for (gx in 0 until 7) {
+                val sx = x0 + w * gx / 7
+                val ex = maxOf(x0 + w * (gx + 1) / 7, sx + 1)
+                val sy = 618 + h * gy / 9
+                val ey = maxOf(618 + h * (gy + 1) / 9, sy + 1)
+                var n = 0
+                for (yy in sy until ey) for (xx in sx until ex) {
+                    val c = px(bmp, xx, yy)
+                    if (minOf(r(c), g(c), b(c)) > 200) n++
+                }
+                sb.append(if (n * 2 > (ey - sy) * (ex - sx)) '1' else '0')
+            }
+        }
+        return sb.toString()
+    }
+
+    /** 등급의 정수 자리. 왼쪽 두 칸은 육각형 테두리라 어느 숫자에나 같이 들어간다. */
+    private val GRADE_ONES = mapOf(
+        "110011011011001101000010110001000100100000010001000001100000000" to 5,
+    )
+
+    /** 등급의 소수 자리. */
+    private val GRADE_TENTHS = mapOf(
+        "011100000011000001000000100000010000010000001000000100000000000" to 7,
+        "000100000110000010000011100001011000100100010010000110000000000" to 6,
+        "001100000001000000100000010000010000010000011000001111000000000" to 2,
     )
 
     /**

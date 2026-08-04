@@ -99,6 +99,8 @@ class LoopEngine(
     private var sawLevelUp = false
     /** 그 창에 찍혀 있던 실제 레벨. 못 읽었으면 null. */
     private var readLevel: Int? = null
+    /** 그 창에 찍혀 있던 등급. 못 읽었으면 null. */
+    private var readGrade: Double? = null
     private var level = setup.currentLevel
 
     /** 7.0 은 육각형이 시안이라 색으로 교차검증이 된다. 그 미만은 모두 금색이라 불가. */
@@ -293,6 +295,17 @@ class LoopEngine(
                 prefs.currentLevel = level
                 onLog("  레벨업 — Lv.$level")
                 publish("explore")
+
+                // 등급 하한. 아래로 내려가면 더 돌려봐야 목표를 못 지킨다.
+                // 마이너스 레벨업으로 되돌리는 길은 아직 손대지 않았다. 그 화면을
+                // 확인하지 않고 소모품을 쓰게 하면 안 된다. 지금은 멈추고 알린다.
+                val g = readGrade
+                if (g != null && g < setup.minGrade - 0.001) {
+                    onLog("등급이 하한 아래로 내려갔다 — ${String.format("%.1f", g)} < ${String.format("%.1f", setup.minGrade)}")
+                    dumpFrame("gradefloor")
+                    abort("등급 하한을 지키지 못했다 (${String.format("%.1f", g)})")
+                    return
+                }
                 if (level >= setup.targetLevel) {
                     onLog("목표 달성. Lv.$level")
                     LoopStatus.update(LoopStatus.current.copy(running = false, phase = "done"))
@@ -376,6 +389,7 @@ class LoopEngine(
 
         sawLevelUp = false
         readLevel = null
+        readGrade = null
         var taps = 0
         while (taps < 60 && !LoopStatus.stopRequested) {
             val f = frame() ?: run { abort("탐험 중 화면을 읽지 못했다"); return null }
@@ -397,8 +411,16 @@ class LoopEngine(
                 // 창에 찍힌 값이 진짜다. 세는 값은 어긋날 수 있다.
                 val (shown, unknown) = Judge.levelUpLevel(f)
                 readLevel = shown
-                if (unknown != null) onLog("    ? 모르는 숫자 모양: $unknown")
-                onLog("    LEVEL UP — ${shown?.let { "Lv.$it" } ?: "레벨 못 읽음"} · 등급 자국 $mark (흰 획 $white)")
+                if (unknown != null) onLog("    ? 모르는 레벨 숫자: $unknown")
+
+                val (grade, gradeUnknown) = Judge.readGrade(f)
+                readGrade = grade
+                if (gradeUnknown != null) onLog("    ? 모르는 등급 숫자: $gradeUnknown")
+
+                onLog(
+                    "    LEVEL UP — ${shown?.let { "Lv.$it" } ?: "레벨 못 읽음"} · " +
+                        "등급 ${grade?.let { String.format("%.1f", it) } ?: "못 읽음 (자국 $mark, 흰 획 $white)"}"
+                )
                 // 등급 숫자를 아직 못 읽는다. 실제 등급을 아는 화면을 남겨
                 // 판독표를 만든다. 추측으로 좌표를 잡으면 또 엉뚱한 데를 누른다.
                 dumpFrame("levelup")
