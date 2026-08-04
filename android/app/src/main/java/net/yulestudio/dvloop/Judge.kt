@@ -202,19 +202,26 @@ object Judge {
     }
 
     /**
-     * 동굴 상세 화면인지. 좌측 목록 위의 'EVAL' 금색 버튼으로 판정한다.
-     * 루프는 월드맵에서 시작한다고 가정하는데, 동굴에 남아 있으면
-     * 용 패널 탭이 먹지 않아 다이얼로그가 안 열린다.
+     * 동굴 그리드의 검색창.
+     *
+     * 그리드 위쪽 도구줄에만 있는 넓고 밝은 입력칸이다.
+     * 동굴에 들어왔는지를 이걸로 확인한다.
+     *
+     * 예전에는 좌측 'EVAL' 금색 버튼을 봤는데 틀렸다.
+     * EVAL 머리글은 있을 때와 없을 때가 있어 정작 동굴에서 놓쳤고,
+     * 탐험 숲 화면의 갈색이 금색 조건에 걸려 엉뚱한 곳을 동굴로 읽었다.
+     * 저장된 캡처 21장으로 확인한 결과 그 판정은 쓸 수 없었다.
      */
-    fun isCaveScreen(bmp: Bitmap): Boolean {
-        var gold = 0
-        for (y in 95..125 step 10) {
-            for (x in 330..420 step 15) {
+    fun isCaveGrid(bmp: Bitmap): Boolean {
+        // 검색칸 안쪽은 균일하게 어둡고, 오른쪽 끝(x 1741)에 밝은 테두리가 있다.
+        // 글자를 피해 오른쪽 절반만 본다.
+        for (x in intArrayOf(1500, 1540, 1580, 1620, 1660)) {
+            for (y in intArrayOf(95, 103, 111)) {
                 val c = px(bmp, x, y)
-                if (r(c) > 170 && g(c) > 120 && b(c) < 110 && r(c) - b(c) > 80) gold++
+                if (maxOf(r(c), g(c), b(c)) >= 60) return false
             }
         }
-        return gold >= 5
+        return (1730..1749).any { minOf(r(px(bmp, it, 103)), g(px(bmp, it, 103)), b(px(bmp, it, 103))) > 190 }
     }
 
     /**

@@ -151,7 +151,10 @@ class LoopEngine(
         val no = setup.dragon?.no ?: 0
         if (prefs.preparedNo == no && no != 0) {
             onLog("  대상 지정 건너뜀 (이미 즐겨찾기됨)")
-            if (!waitForGameReady()) return
+            // 지정을 건너뛰어도 출발점은 동굴로 맞춘다.
+            // 어디서 시작했는지 모르는 채 용 패널을 누르면 엉뚱한 화면을 건드린다.
+            if (!ensureCaveGrid()) return
+            tap(tCaveX); delay(4000)
         } else {
             if (!prepareTarget()) return
             prefs.preparedNo = no
@@ -218,7 +221,8 @@ class LoopEngine(
         val no = setup.dragon?.no ?: 0
         if (prefs.preparedNo == no && no != 0) {
             onLog("  대상 지정 건너뜀 (이미 즐겨찾기됨)")
-            if (!waitForGameReady()) return
+            if (!ensureCaveGrid()) return
+            tap(tCaveX); delay(4000)
         } else {
             if (!prepareTarget()) return
             prefs.preparedNo = no
@@ -280,6 +284,11 @@ class LoopEngine(
         if (!openDragonDetail(name)) return false
 
         val f = frame() ?: run { abort("동굴 화면을 읽지 못했다"); return false }
+        // 별 판정은 동굴 상세에서만 뜻이 있다. 지도 화면에서도 값이 나오기 때문에
+        // 그대로 믿으면 월드맵에서 별 자리를 누르게 된다.
+        if (Judge.isGameTopBarVisible(f)) {
+            abort("동굴 상세가 아니다 — 즐겨찾기를 건드리지 않는다"); return false
+        }
         when (Judge.isFavorited(f)) {
             true -> onLog("    즐겨찾기 이미 켜져 있음")
             false -> {
@@ -313,7 +322,11 @@ class LoopEngine(
         if (!openDragonDetail(name)) {
             onLog("  ! 즐겨찾기를 끄지 못했다 — 직접 꺼야 한다"); return
         }
-        when (Judge.isFavorited(frame() ?: return)) {
+        val df = frame() ?: return
+        if (Judge.isGameTopBarVisible(df)) {
+            onLog("  ! 동굴 상세가 아니다 — 즐겨찾기를 건드리지 않는다"); return
+        }
+        when (Judge.isFavorited(df)) {
             false -> onLog("    즐겨찾기 이미 꺼져 있음")
             true -> {
                 tap(tStar); delay(3000)
@@ -392,21 +405,58 @@ class LoopEngine(
         return false
     }
 
-    /** 동굴에서 이름으로 찾아 상세를 연다. 지정·해제가 함께 쓴다. */
-    private suspend fun openDragonDetail(name: String): Boolean {
+    /**
+     * 어디에 있든 동굴 그리드까지 데려온다. 모든 루프의 출발점이다.
+     *
+     * 게임은 월드맵 · 탐험맵 · 던전 · 에스텔라 · 하늘 왕국 · 전투 · 각종 창 중
+     * 어디서든 멈춰 있을 수 있다. 그런데 동굴 버튼은 지도류 화면이면 어디서나
+     * 같은 자리(상단 아이콘 줄)에 있다. 그래서
+     *
+     *   1) 상단 아이콘 줄이 보일 때까지 덮고 있는 창을 닫고
+     *   2) 동굴을 누르고
+     *   3) 그리드를 펼쳐 검색칸이 보이는지로 확인한다
+     *
+     * 세 번째가 핵심이다. '동굴에 들어왔다' 를 눈으로 확인하지 않으면
+     * 그 뒤의 탭이 전부 엉뚱한 화면으로 날아간다. 실제로 그렇게 지도가 넘어가고
+     * 도감 검색창까지 들어간 적이 있다.
+     */
+    private suspend fun ensureCaveGrid(): Boolean {
         if (!waitForGameReady()) return false
 
-        // 동굴 진입 → 그리드 펼치기 → 검색.
-        // 전환 중에는 탭이 먹지 않아 한 번에 못 들어가는 일이 잦다.
-        // 실제로 동굴이 안 열린 채 이후 탭이 월드맵을 건드려 지도가 넘어갔다.
+        for (round in 1..6) {
+            clearBlockers()
+            val f = frame() ?: run { abort("화면을 읽지 못했다"); return false }
+
+            if (Judge.isCaveGrid(f) || Judge.isFilterOpen(f)) return true
+
+            if (Judge.isGameTopBarVisible(f)) {
+                tap(tCave); delay(5000)
+                clearBlockers()
+                tap(tGridOpen); delay(4000)
+                val g = frame()
+                if (g != null && (Judge.isCaveGrid(g) || Judge.isFilterOpen(g))) {
+                    onLog("    동굴 그리드 진입")
+                    return true
+                }
+                onLog("    동굴 진입 확인 실패 ($round/6) — 되돌린다")
+                tap(tWindowX); delay(4000)
+            } else {
+                // 지도가 아니라 큰 창·전투 화면이다. 표준 닫기 X 자리를 한 번 누른다.
+                onLog("    지도 화면이 아니다 ($round/6) — 창 닫기")
+                tap(tWindowX); delay(4000)
+            }
+        }
+        abort("동굴까지 가지 못했다")
+        return false
+    }
+
+    /** 동굴에서 이름으로 찾아 상세를 연다. 지정·해제가 함께 쓴다. */
+    private suspend fun openDragonDetail(name: String): Boolean {
         // 검색창에 글자가 들어갔는지를 성공 기준으로 삼아 재시도한다.
         // (접근성으로 입력하므로 한글이 들어간다 — adb 로는 불가능했다)
         var typed = false
         for (attempt in 1..3) {
-            clearBlockers()
-            tap(tCave); delay(5000)
-            clearBlockers()
-            tap(tGridOpen); delay(4000)
+            if (!ensureCaveGrid()) return false
             if (!applyStageFilter()) {
                 onLog("    단계 필터 실패 ($attempt/3) — 되돌리고 재시도")
                 tap(tCaveX); delay(3000)
@@ -452,16 +502,10 @@ class LoopEngine(
         // 일일 팝업은 보물상자 → 보상 → 출석체크판 식으로 줄줄이 이어진다.
         // 한두 번으로는 다 못 걷어낸다.
         repeat(8) {
-            // 동굴에 남아 있으면 월드맵으로 되돌린다.
-            // 루프는 월드맵에서 시작한다고 가정하므로, 동굴에 있으면
-            // 용 패널 탭이 먹지 않아 다이얼로그가 안 열린다.
-            frame()?.let {
-                if (Judge.isCaveScreen(it)) {
-                    onLog("    동굴에 있음 — 월드맵으로 되돌림")
-                    tap(tCaveX); delay(4000)
-                    return@repeat
-                }
-            }
+            // 여기서 화면을 '옮기는' 일은 하지 않는다. 가리는 것만 걷어낸다.
+            // 예전에는 동굴이면 월드맵으로 되돌렸다. 그 판정이 틀렸던 데다
+            // (숲 화면을 동굴로 읽었다) 이제는 동굴이 출발점이라 되돌리면 서로 싸운다.
+
             // 게임 밖 창이 올라왔는가 (재난문자 · 전화 · 다른 앱 알림)
             val pkg = a11y?.foregroundPackage()
             if (pkg != null && pkg != GAME_PKG && pkg != ctx.packageName) {

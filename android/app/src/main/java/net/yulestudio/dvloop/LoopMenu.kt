@@ -35,6 +35,11 @@ enum class LoopKind(
         "7.0 을 지키며 목표 레벨까지 올려요",
         true,
     ),
+    EXPLORE(
+        "탐험 루프",
+        "등급 하한을 지키며 탐험으로 레벨을 올려요",
+        true,
+    ),
     MISSION(
         "미션 루프",
         "일일·주간 미션을 대신 돌아요",
@@ -49,11 +54,6 @@ enum class LoopKind(
         "왕궁 본체 루프",
         "왕궁 본체를 반복해서 잡아요",
         false,
-    ),
-    EXPLORE(
-        "탐험 루프",
-        "등급 하한을 지키며 탐험으로 레벨을 올려요",
-        true,
     ),
 }
 
@@ -195,15 +195,15 @@ private fun SavedCard(
 
 @Composable
 private fun LoopCard(kind: LoopKind, enabled: Boolean, onClick: () -> Unit) {
-    val bg = if (enabled) Color(0xFFE8F1FE) else Field
-
+    // 파란 테두리에 파란 배경은 '고른 것' 으로 읽힌다.
+    // 여기서는 아무것도 고른 상태가 아니라 열려 있을 뿐이므로 흰 바탕에 얇은 선만 둔다.
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(bg)
+            .background(if (enabled) Color.White else Field)
             .then(
-                if (enabled) Modifier.border(1.5.dp, Blue, RoundedCornerShape(14.dp))
+                if (enabled) Modifier.border(1.dp, Line, RoundedCornerShape(14.dp))
                 else Modifier
             )
             .clickable(enabled = enabled, onClick = onClick)
