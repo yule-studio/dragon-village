@@ -12,13 +12,30 @@ android {
         applicationId = "net.yulestudio.dvloop"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+    }
+
+    /**
+     * 배포 빌드도 디버그 키로 서명한다.
+     *
+     * 마켓에 올리는 앱이 아니라 폰에 직접 넣어 쓰는 도구다. 키를 새로 만들면
+     * 서명이 달라져 기존 앱을 지우고 깔아야 하고, 그러면 저장된 로그인 정보와
+     * 루프 설정이 함께 날아간다. 같은 키를 써야 덮어쓰기가 된다.
+     */
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
