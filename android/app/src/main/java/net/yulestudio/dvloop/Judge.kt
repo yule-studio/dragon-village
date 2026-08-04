@@ -238,6 +238,55 @@ object Judge {
     }
 
     /**
+     * 탐험 중 레벨이 오르면 뜨는 'LEVEL UP!' 창인가.
+     *
+     * 이 창은 화면을 아무 데나 눌러서는 안 넘어간다. 아래 '확인' 을 눌러야 한다.
+     * 그걸 몰라 대사 넘기듯 60번 누르다 '탐험이 끝나지 않는다' 로 멈췄다.
+     *
+     * 확인 버튼은 지역 창의 탐험 버튼과 같은 파랑(0,97,173) 이고, 글자가 없는
+     * 위아래 두 줄이 그 색으로 꽉 찬다. 위쪽 리본의 빨강까지 함께 본다.
+     * 저장된 캡처 28장에서 오판이 없었다.
+     */
+    fun isLevelUpScreen(bmp: Bitmap): Boolean {
+        for (y in intArrayOf(803, 851)) {
+            for (x in 1080..1280 step 40) {
+                val c = px(bmp, x, y)
+                if (!(r(c) < 45 && g(c) in 70..125 && b(c) in 145..205)) return false
+            }
+        }
+        var red = 0
+        for (x in 900..1440 step 30) {
+            val c = px(bmp, x, 138)
+            if (r(c) > 150 && g(c) < 90 && b(c) < 90) red++
+        }
+        return red >= 12
+    }
+
+    /** 레벨업 창의 '확인'. 여기만 누르면 넘어간다. */
+    val levelUpOk = 1168 to 824
+
+    /**
+     * 레벨업 창에 찍힌 등급 육각형의 지문.
+     *
+     * 숫자를 아직 못 읽는다. 육각형 안 흰 획의 모양을 그대로 남겨 두고,
+     * 실제 등급을 아는 캡처가 쌓이면 판독표를 만든다.
+     * 위쪽 y 618 아래만 본다 — 그 위는 육각형의 흰 반사광이라 글자가 아니다.
+     */
+    fun gradeMark(bmp: Bitmap): Pair<Int, Int> {
+        var h = 17
+        var white = 0
+        for (y in 618..652 step 2) {
+            for (x in 650..740 step 2) {
+                val c = px(bmp, x, y)
+                val on = minOf(r(c), g(c), b(c)) > 200
+                if (on) white++
+                h = h * 31 + if (on) 1 else 0
+            }
+        }
+        return h to white
+    }
+
+    /**
      * 지도 왼쪽 아래 슬롯에 있는 레벨 뱃지의 지문.
      *
      * 숫자를 읽지는 않는다. 바뀌었는지만 보면 레벨업을 알 수 있다.

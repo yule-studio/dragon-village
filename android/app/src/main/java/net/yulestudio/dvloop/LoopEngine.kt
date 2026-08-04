@@ -95,6 +95,8 @@ class LoopEngine(
 
     private var cycle = 0
     private var wins = 0
+    /** 방금 돌린 탐험에서 레벨업 창을 봤는가. runOneExploration 이 채운다. */
+    private var sawLevelUp = false
     private var level = setup.currentLevel
 
     /** 7.0 은 육각형이 시안이라 색으로 교차검증이 된다. 그 미만은 모두 금색이라 불가. */
@@ -276,28 +278,27 @@ class LoopEngine(
             onLog("  탐험 $runs 회 — ${z.name}")
             onZoneMap = runOneExploration() ?: return
 
+            // 레벨업은 창을 본 것으로 센다. 뱃지 지문은 교차 검증용이다.
+            if (sawLevelUp) {
+                level++
+                prefs.currentLevel = level
+                onLog("  레벨업 — Lv.$level")
+                publish("explore")
+                if (level >= setup.targetLevel) {
+                    onLog("목표 달성. Lv.$level")
+                    LoopStatus.update(LoopStatus.current.copy(running = false, phase = "done"))
+                    FloatingService.refresh(ctx)
+                    return
+                }
+            }
             if (onZoneMap) {
                 val f = frame()
                 if (f != null && Judge.isGameTopBarVisible(f)) {
                     val (sig, white) = Judge.levelBadge(f)
-                    if (badge != 0 && sig != badge) {
-                        // 몇 레벨이 올랐는지는 지문만으로 알 수 없다. 한 번에 하나로 본다.
-                        // 탐험 한 판에 두 레벨이 오르면 여기서 어긋난다 — 흰 픽셀 수를
-                        // 남겨 두었으니 나중에 숫자 판독표를 만들어 바로잡는다.
-                        level++
-                        prefs.currentLevel = level
-                        onLog("  레벨업 — Lv.$level (뱃지 흰 픽셀 $white)")
-                        // 등급이 이 시점에 어떻게 보이는지 아직 모른다. 화면을 남긴다.
-                        dumpFrame("levelup")
-                        publish("explore")
-                        if (level >= setup.targetLevel) {
-                            onLog("목표 달성. Lv.$level")
-                            LoopStatus.update(
-                                LoopStatus.current.copy(running = false, phase = "done")
-                            )
-                            FloatingService.refresh(ctx)
-                            return
-                        }
+                    // 창을 놓쳤는데 뱃지가 바뀌었다면 레벨 세는 값이 어긋난 것이다.
+                    // 고치지는 않고 알리기만 한다 — 몇이 올랐는지는 아직 못 읽는다.
+                    if (badge != 0 && sig != badge && !sawLevelUp) {
+                        onLog("  ! 레벨업 창을 못 봤는데 뱃지가 바뀌었다 (흰 획 $white)")
                     }
                     badge = sig
                 }
@@ -356,11 +357,25 @@ class LoopEngine(
     private suspend fun runOneExploration(): Boolean? {
         tap(tExploreBtn); delay(6000)
 
+        sawLevelUp = false
         var taps = 0
         while (taps < 60 && !LoopStatus.stopRequested) {
             val f = frame() ?: run { abort("탐험 중 화면을 읽지 못했다"); return null }
 
             if (Judge.isGameTopBarVisible(f)) return true
+
+            // 레벨업 창은 아무 데나 눌러서는 안 넘어간다. 확인을 눌러야 한다.
+            if (Judge.isLevelUpScreen(f)) {
+                val (mark, white) = Judge.gradeMark(f)
+                sawLevelUp = true
+                onLog("    LEVEL UP — 등급 자국 $mark (흰 획 $white)")
+                // 등급 숫자를 아직 못 읽는다. 실제 등급을 아는 화면을 남겨
+                // 판독표를 만든다. 추측으로 좌표를 잡으면 또 엉뚱한 데를 누른다.
+                dumpFrame("levelup")
+                tap(Judge.levelUpOk); delay(4000)
+                taps++
+                continue
+            }
 
             val fy = Judge.fightButtonY(f)
             if (fy != null) {
