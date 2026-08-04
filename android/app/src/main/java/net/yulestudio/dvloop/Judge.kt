@@ -157,7 +157,7 @@ object Judge {
     /** 하이브로 버튼의 실제 y 좌표. 못 찾으면 null. */
     fun highbrowButtonY(bmp: Bitmap): Int? {
         val (_, facebook, highbrow) = loginBands(bmp)
-        return if (facebook < 0 || highbrow < 0) null else highbrow + 45   // 블록 가운데쯤
+        return if (facebook < 0 || highbrow < 0) null else highbrow + 65   // 블록 가운데쯤
     }
 
     /** 로그인 버튼 세 개(구글=빨강 · 페북=파랑 · 하이브로=회색)의 첫 y. 없으면 -1. */
@@ -165,14 +165,14 @@ object Judge {
         var google = -1
         var facebook = -1
         var highbrow = -1
-        var y = 280
-        while (y <= 900) {
+        var y = 300
+        while (y < 900) {
             when {
                 band(bmp, y, Hue.RED) -> if (google < 0) google = y
                 band(bmp, y, Hue.BLUE) -> if (facebook < 0 && google >= 0) facebook = y
                 band(bmp, y, Hue.GREY) -> if (highbrow < 0 && facebook >= 0) highbrow = y
             }
-            y += 15
+            y += 10
         }
         return Triple(google, facebook, highbrow)
     }
@@ -180,25 +180,30 @@ object Judge {
     private enum class Hue { RED, BLUE, GREY }
 
     /**
-     * 그 줄이 넓고 균일한 단색 띠인가.
+     * 그 줄이 로그인 버튼의 아이콘 사각형인가.
      *
-     * 예전에는 x=470 한 점만 봤다. 그러면 색만 맞으면 무엇이든 걸린다.
-     * 실제로 동굴 그리드의 드래곤 썸네일 · 전투 화면 · 인벤토리를
-     * 로그인 선택 화면으로 읽어 멀쩡히 돌던 루프를 멈췄다.
-     * 로그인 버튼은 화면을 가로지르는 넓은 단색 띠다. 그 성질을 검사한다.
+     * 두 번 틀렸다. 처음에는 x=470 한 점만 봐서 동굴 그리드의 드래곤 썸네일까지
+     * 로그인 화면으로 읽었다. 그래서 '넓은 단색 띠' 로 조였더니 이번에는
+     * 진짜 로그인 화면을 못 잡았다 — **버튼 전체가 색인 게 아니라
+     * 왼쪽 아이콘 사각형만 색이고 나머지는 어두운 바탕이다.**
+     *
+     * 실측(2026-08-04): 아이콘 사각형은 x 400~545.
+     * 구글 (221,75,57) · 페북 (62,89,150) · 하이브로 (117,117,117).
+     * 가운데에는 흰 글자가 들어가므로 양 끝만 본다.
      */
     private fun band(bmp: Bitmap, y: Int, hue: Hue): Boolean {
-        val pts = intArrayOf(420, 560, 700, 840, 980).map { px(bmp, it, y) }
-        val sums = pts.map { r(it) + g(it) + b(it) }
-        if (sums.max() - sums.min() > 70) return false
-        return pts.all { c ->
-            when (hue) {
-                Hue.RED -> r(c) > 150 && r(c) > g(c) + 30 && r(c) > b(c) + 30
-                Hue.BLUE -> b(c) > 110 && b(c) > r(c) + 40 && b(c) > g(c) + 20
-                Hue.GREY -> kotlin.math.abs(r(c) - g(c)) < 30 &&
-                    kotlin.math.abs(g(c) - b(c)) < 30 && r(c) in 71..209
+        var n = 0
+        for (x in intArrayOf(400, 408, 416, 528, 536, 544)) {
+            val c = px(bmp, x, y)
+            val ok = when (hue) {
+                Hue.RED -> r(c) > 150 && r(c) > g(c) + 60 && r(c) > b(c) + 60
+                Hue.BLUE -> b(c) in 41..199 && b(c) > r(c) + 50 && b(c) > g(c) + 40
+                Hue.GREY -> kotlin.math.abs(r(c) - g(c)) < 14 &&
+                    kotlin.math.abs(g(c) - b(c)) < 14 && r(c) in 90..170
             }
+            if (ok) n++
         }
+        return n >= 5
     }
 
     /**
