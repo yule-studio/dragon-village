@@ -558,10 +558,18 @@ class LoopEngine(
      * 상단 아이콘 줄이 보일 때까지 닫는다.
      */
     private suspend fun leaveCave(): Boolean {
-        repeat(4) {
+        repeat(6) {
             val f = frame()
             if (f != null && Judge.isGameTopBarVisible(f)) return true
-            tap(tCaveX); delay(4000)
+
+            when {
+                // 필터창이 덮고 있으면 그것부터. 아래로 눌러봐야 창에 막힌다.
+                f != null && Judge.isFilterOpen(f) -> { tap(tFilter); delay(2500) }
+                // 그리드가 펼쳐져 있으면 빨간 X 가 먹지 않는다. 옆 화살표로 먼저 접는다.
+                // adb 로 직접 눌러도 안 닫히는 것을 확인했다.
+                f != null && Judge.isCaveGrid(f) -> { tap(tGridClose); delay(3500) }
+                else -> { tap(tCaveX); delay(4000) }
+            }
         }
         val f = frame()
         if (f != null && Judge.isGameTopBarVisible(f)) return true
