@@ -102,6 +102,8 @@ class MainActivity : ComponentActivity() {
     private fun savedLoop(prefs: LoopPrefs): SavedLoop? {
         if (!prefs.hasSetup) return null
         val stage = runCatching { Stage.valueOf(prefs.stageName) }.getOrNull() ?: return null
+        val kind = runCatching { LoopKind.valueOf(prefs.kindName) }
+            .getOrDefault(LoopKind.LEVEL_UP)
         return SavedLoop(
             dragonName = prefs.dragonName,
             stageLabel = stage.label,
@@ -109,8 +111,8 @@ class MainActivity : ComponentActivity() {
             targetLevel = prefs.targetLevel,
             grade = prefs.currentGrade.toDouble(),
             done = prefs.isDone,
-            kindTitle = runCatching { LoopKind.valueOf(prefs.kindName) }
-                .getOrDefault(LoopKind.LEVEL_UP).title,
+            kindTitle = kind.title,
+            minGrade = if (kind == LoopKind.EXPLORE) prefs.minGrade.toDouble() else null,
         )
     }
 

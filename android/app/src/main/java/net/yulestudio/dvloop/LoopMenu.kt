@@ -136,6 +136,8 @@ data class SavedLoop(
     val grade: Double,
     val done: Boolean,
     val kindTitle: String,
+    /** 탐험 루프의 등급 하한. 레벨업 루프는 null 이다. */
+    val minGrade: Double?,
 )
 
 @Composable
@@ -160,8 +162,14 @@ private fun SavedCard(
             fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink,
         )
         Spacer(Modifier.height(2.dp))
+        // 두 루프는 등급을 다루는 방식이 다르다.
+        // 레벨업은 정해진 등급을 그대로 지키고, 탐험은 하한 아래로만 안 내려가면 된다.
         Text(
-            "Lv.${s.level} → Lv.${s.targetLevel} · 등급 ${String.format("%.1f", s.grade)} 유지",
+            "Lv.${s.level} → Lv.${s.targetLevel} · " +
+                if (s.minGrade != null)
+                    "등급 ${String.format("%.1f", s.minGrade)} 아래로 안 내려가게"
+                else
+                    "등급 ${String.format("%.1f", s.grade)} 유지",
             fontSize = 13.sp, color = Gray,
         )
         Spacer(Modifier.height(14.dp))

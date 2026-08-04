@@ -257,6 +257,10 @@ class LoopEngine(
         // 동굴에서 나와 지도로. 여기부터는 지도 ↔ 탐험만 오간다.
         if (!leaveCave()) return
 
+        // 레벨 뱃지 지문. 숫자를 읽지 않고 바뀌었는지만 본다.
+        var badge = frame()?.takeIf { Judge.isGameTopBarVisible(it) }
+            ?.let { Judge.levelBadge(it).first } ?: 0
+
         var runs = 0
         var onZoneMap = false
         while (!LoopStatus.stopRequested && abortReason == null && runs < 500) {
@@ -271,6 +275,33 @@ class LoopEngine(
             publish("explore")
             onLog("  탐험 $runs 회 — ${z.name}")
             onZoneMap = runOneExploration() ?: return
+
+            if (onZoneMap) {
+                val f = frame()
+                if (f != null && Judge.isGameTopBarVisible(f)) {
+                    val (sig, white) = Judge.levelBadge(f)
+                    if (badge != 0 && sig != badge) {
+                        // 몇 레벨이 올랐는지는 지문만으로 알 수 없다. 한 번에 하나로 본다.
+                        // 탐험 한 판에 두 레벨이 오르면 여기서 어긋난다 — 흰 픽셀 수를
+                        // 남겨 두었으니 나중에 숫자 판독표를 만들어 바로잡는다.
+                        level++
+                        prefs.currentLevel = level
+                        onLog("  레벨업 — Lv.$level (뱃지 흰 픽셀 $white)")
+                        // 등급이 이 시점에 어떻게 보이는지 아직 모른다. 화면을 남긴다.
+                        dumpFrame("levelup")
+                        publish("explore")
+                        if (level >= setup.targetLevel) {
+                            onLog("목표 달성. Lv.$level")
+                            LoopStatus.update(
+                                LoopStatus.current.copy(running = false, phase = "done")
+                            )
+                            FloatingService.refresh(ctx)
+                            return
+                        }
+                    }
+                    badge = sig
+                }
+            }
         }
         LoopStatus.update(LoopStatus.current.copy(running = false, phase = "idle"))
         FloatingService.refresh(ctx)
