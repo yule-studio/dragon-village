@@ -330,12 +330,18 @@ class LoopEngine(
         for (attempt in 1..3) {
             clearBlockers()
 
-            // 탐험이 끝나면 그 지역 지도로 돌아온다고 여기고 곧장 지역을 눌렀더니,
-            // 월드맵에 서 있을 때는 같은 좌표가 바다라 엉뚱하게 에스텔라로 들어갔다.
-            // 레벨에 안 맞는 곳이라 3마리 편성 화면이 떠서 아무것도 못 했다.
-            // 몇 초 더 걸려도 매번 월드맵부터 다시 잡는다.
-            if (!goToWorldMap()) return false
-            tap(z.area.at); delay(6000)
+            // 탐험이 끝나면 보통 그 지역 지도로 돌아온다. 그런데 레벨업 창이 떴던
+            // 판은 월드맵으로 돌려보낸다. 그걸 모르고 지역 좌표를 눌렀더니
+            // 월드맵에서는 같은 자리가 바다라 엉뚱하게 에스텔라로 들어갔다.
+            //
+            // 그래서 월드맵인지만 본다. 월드맵이면 지역부터 골라 들어가고,
+            // 아니면 이미 그 지역 지도에 서 있는 것이니 바로 누른다.
+            // 매번 월드맵을 거치면 한 판마다 10초씩 버린다.
+            val here = frame() ?: run { abort("화면을 읽지 못했다"); return false }
+            if (Judge.isWorldMap(here) || !Judge.isGameTopBarVisible(here) || attempt > 1) {
+                if (!goToWorldMap()) return false
+                tap(z.area.at); delay(6000)
+            }
 
             val f = frame() ?: run { abort("화면을 읽지 못했다"); return false }
             if (!Judge.isGameTopBarVisible(f)) {
@@ -810,6 +816,9 @@ class LoopEngine(
      */
     private suspend fun ensureGameForeground(): Boolean {
         repeat(3) {
+            // 멈추라고 했으면 게임을 다시 띄우지 않는다.
+            // 이게 없으면 앱을 닫아도 루프가 드빌을 계속 올려 손을 못 쓴다.
+            if (LoopStatus.stopRequested) return false
             val pkg = a11y?.foregroundPackage()
             if (pkg == GAME_PKG) return true
             onLog("    게임이 앞에 없다 (현재: $pkg) — 다시 띄운다")
@@ -830,6 +839,7 @@ class LoopEngine(
         val end = System.currentTimeMillis() + timeoutMs
         var quiet = 0
         while (System.currentTimeMillis() < end) {
+            if (LoopStatus.stopRequested) return false
             // 도중에 다른 앱이 끼어들 수 있다
             if (a11y?.foregroundPackage()?.let { it != GAME_PKG && it != ctx.packageName } == true) {
                 if (!ensureGameForeground()) return false

@@ -35,8 +35,8 @@ class LoopService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            LoopStatus.requestStop()
-            stopSelf()
+            log("정지 요청 — 루프와 화면 공유를 멈춘다")
+            stopEverything()
             return START_NOT_STICKY
         }
 
@@ -88,20 +88,52 @@ class LoopService : Service() {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        // 알림에서도 멈출 수 있어야 한다. 미니창이 안 보이거나 게임이 화면을
+        // 다 덮은 상황에서 멈출 길이 없으면 손을 못 쓴다.
+        val stop = PendingIntent.getService(
+            this, 1,
+            Intent(this, LoopService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         return Notification.Builder(this, ch)
             .setContentTitle("드빌 매크로")
             .setContentText("루프가 돌고 있어요")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentIntent(open)
+            .addAction(
+                Notification.Action.Builder(null as android.graphics.drawable.Icon?, "정지", stop)
+                    .build()
+            )
             .setOngoing(true)
             .build()
     }
 
+    /**
+     * 최근 앱 목록에서 앱을 밀어 닫았을 때.
+     *
+     * 여기서 멈추지 않으면 서비스가 그대로 살아 화면 공유가 켜진 채로 남고,
+     * 루프가 드빌을 계속 다시 띄운다. 실제로 앱을 닫았는데도 게임이 자꾸
+     * 올라와서 손을 못 쓰는 일이 있었다. 닫으면 닫힌 것이다.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        log("앱이 닫혔다 — 루프와 화면 공유를 멈춘다")
+        stopEverything()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
-        job?.cancel()
+        stopEverything()
         scope.cancel()
-        ScreenCapture.stop()
         super.onDestroy()
+    }
+
+    /** 루프 · 화면 공유 · 미니창을 한꺼번에 내린다. 어디서 멈추든 같은 길을 쓴다. */
+    private fun stopEverything() {
+        LoopStatus.requestStop()
+        job?.cancel()
+        ScreenCapture.stop()
+        FloatingService.stop(applicationContext)
+        stopSelf()
     }
 
     companion object {
