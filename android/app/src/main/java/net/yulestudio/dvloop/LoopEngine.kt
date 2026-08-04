@@ -637,7 +637,11 @@ class LoopEngine(
     private suspend fun ensureCaveGrid(): Boolean {
         if (!waitForGameReady()) return false
 
-        for (round in 1..6) {
+        // 탐험이 진행 중이었다는 것이 한 번이라도 확인되면, 그 뒤로는 모르는 화면도
+        // 대사 넘기기로 다룬다. 전투가 끝난 뒤의 대사 화면은 창을 닫아서 나갈 수 없다.
+        var inExploration = false
+
+        for (round in 1..20) {
             clearBlockers()
             val f = frame() ?: run { abort("화면을 읽지 못했다"); return false }
 
@@ -662,13 +666,41 @@ class LoopEngine(
                 }
                 onLog("    동굴 진입 확인 실패 ($round/6) — 되돌린다")
                 tap(tWindowX); delay(4000)
+            } else if (finishExploration(f)) {
+                // 탐험이나 전투가 진행 중이었다. 그건 창을 닫아서 빠져나올 수 없다.
+                // 재시작이 전투 중에 걸리면 표준 X 를 여섯 번 눌러도 화면이 그대로다.
+                inExploration = true
+            } else if (inExploration) {
+                tap(tExploreNext); delay(2500)
             } else {
-                // 지도가 아니라 큰 창·전투 화면이다. 표준 닫기 X 자리를 한 번 누른다.
-                onLog("    지도 화면이 아니다 ($round/6) — 창 닫기")
+                // 지도가 아니라 큰 창이다. 표준 닫기 X 자리를 한 번 누른다.
+                onLog("    지도 화면이 아니다 ($round/20) — 창 닫기")
                 tap(tWindowX); delay(4000)
             }
         }
         abort("동굴까지 가지 못했다")
+        return false
+    }
+
+    /**
+     * 탐험이나 전투가 진행 중이면 한 걸음 진행시킨다.
+     *
+     * 그 화면들은 창을 닫아서 빠져나올 수 없다. 전투에는 닫기 X 가 아예 없다.
+     * 재시작이 전투 중에 걸리면 표준 X 를 여섯 번 눌러도 화면이 그대로였다.
+     *
+     * @return 아는 화면이라 손을 댔으면 true
+     */
+    private suspend fun finishExploration(f: Bitmap): Boolean {
+        if (Judge.isHungerPopup(f)) {
+            onLog("    배고픔 — 음식을 먹인다"); tap(Judge.hungerOk); delay(3500); return true
+        }
+        if (Judge.isLevelUpScreen(f)) {
+            onLog("    레벨업 창 — 확인"); tap(Judge.levelUpOk); delay(4000); return true
+        }
+        val fy = Judge.fightButtonY(f)
+        if (fy != null) {
+            onLog("    전투 중 — 싸운다"); tap(tFightX to fy); delay(6000); return true
+        }
         return false
     }
 
