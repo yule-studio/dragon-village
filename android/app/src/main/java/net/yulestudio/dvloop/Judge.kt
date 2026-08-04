@@ -225,6 +225,60 @@ object Judge {
     }
 
     /**
+     * 탐험 지역 창이 열려 있는가 (등장 몬스터 · 탐험 / 자동 탐험 / 토벌권 사용).
+     *
+     * 지역마다 배경이 다르지만 창 자체는 어디서나 같은 자리에 같은 모양으로 뜬다.
+     * '탐험' 버튼의 파랑(0,97,173)과 그 아래 크림색 패널을 함께 본다.
+     * 파랑만 보면 에스텔라 지도의 물빛에 걸린다.
+     *
+     * 지역 창이 떴다는 것은 지도에서 옳은 곳을 눌렀다는 뜻이다.
+     * 이게 확인돼야 탐험 버튼을 누른다.
+     */
+    fun isZoneDialog(bmp: Bitmap): Boolean {
+        for (x in intArrayOf(1400, 1440, 1540, 1580)) {
+            val c = px(bmp, x, 361)
+            if (!(r(c) < 45 && g(c) in 70..125 && b(c) in 145..205)) return false
+        }
+        for (x in intArrayOf(1400, 1560)) {
+            val c = px(bmp, x, 595)
+            if (minOf(r(c), g(c), b(c)) < 200) return false
+        }
+        return true
+    }
+
+    /**
+     * 몬스터를 만난 화면인가. 맞으면 FIGHT 육각형의 세로 중심을 돌려준다.
+     *
+     * 육각형은 x 1700~1800 에 고정인데 세로 위치는 화면 구성에 따라 다르다
+     * (1마리 지역 830, 3마리 지역 736). 좌표를 박아두면 빗나간다.
+     *
+     * 가운데를 가로지르는 'FIGHT!' 리본이 노랑이라 빨강이 위아래로 끊긴다.
+     * 그 두 덩이를 찾아 사이를 중심으로 삼는다.
+     * 아래쪽 편성 바의 빨간 체력 막대에 걸리지 않도록 두 덩이의 간격도 본다.
+     */
+    fun fightButtonY(bmp: Bitmap): Int? {
+        val rows = (560..1036 step 4).filter { y ->
+            (1700..1800 step 10).count { x ->
+                val c = px(bmp, x, y)
+                r(c) > 150 && g(c) < 90 && b(c) < 90
+            } >= 6
+        }
+        if (rows.isEmpty()) return null
+
+        val groups = mutableListOf<MutableList<Int>>()
+        rows.forEach { y ->
+            val last = groups.lastOrNull()
+            if (last != null && y - last.last() <= 8) last.add(y) else groups.add(mutableListOf(y))
+        }
+        for (i in 0 until groups.size - 1) {
+            val top = groups[i].first()
+            val bottom = groups[i + 1].last()
+            if (bottom - top in 150..230) return (top + bottom) / 2
+        }
+        return null
+    }
+
+    /**
      * 동굴 필터창이 열려 있는가.
      *
      * 버튼 사이 여백만 본다. 창이 크고 배경이 균일한 짙은 회색이라

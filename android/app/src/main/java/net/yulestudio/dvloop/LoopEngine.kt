@@ -68,6 +68,14 @@ class LoopEngine(
     /** 전체 화면 게임 창의 표준 닫기 X. 동굴 · 친구 목록 등이 같은 자리를 쓴다. */
     private val tWindowX = 2012 to 53
 
+    // 탐험
+    /** 지역 창의 '탐험' 버튼. 지역이 달라도 창은 같은 자리에 뜬다. */
+    private val tExploreBtn = 1490 to 361
+    /** 대사를 넘기는 자리. 대사 상자 안이라 지도로 돌아왔을 때 덜 위험하다. */
+    private val tExploreNext = 1170 to 900
+    /** FIGHT 육각형의 가로 위치. 세로는 화면마다 달라 판정으로 찾는다. */
+    private val tFightX = 1750
+
     // 로그인
     private val tStart = 1170 to 540
     private val tHighbrow = 1170 to 759
@@ -228,9 +236,101 @@ class LoopEngine(
             prefs.preparedNo = no
         }
 
-        onLog("대상 지정까지 마쳤다. 탐험 사이클은 아직 붙이지 않았다.")
+        // 동굴에서 나와 지도로. 여기부터는 지도 ↔ 탐험만 오간다.
+        tap(tCaveX); delay(4000)
+
+        var runs = 0
+        var onZoneMap = false
+        while (!LoopStatus.stopRequested && abortReason == null && runs < 500) {
+            val z = ExploreMap.zoneFor(level)
+            if (z.party > 1) {
+                abort("${z.name} 은 3마리를 편성해야 한다 — 그 화면은 아직 못 다룬다")
+                return
+            }
+            if (!openZoneDialog(z, fromZoneMap = onZoneMap)) return
+
+            runs++
+            publish("explore")
+            onLog("  탐험 $runs 회 — ${z.name}")
+            onZoneMap = runOneExploration() ?: return
+        }
         LoopStatus.update(LoopStatus.current.copy(running = false, phase = "idle"))
         FloatingService.refresh(ctx)
+    }
+
+    /**
+     * 지역 창을 연다.
+     *
+     * 지역 창이 떴다는 것은 지도에서 옳은 곳을 눌렀다는 뜻이다.
+     * 이걸 확인하지 않고 탐험 버튼 자리를 누르면 지도 위 아무 데나 누르는 셈이 된다.
+     *
+     * @param fromZoneMap 방금 탐험을 마치고 그 지역 지도에 서 있으면 true.
+     *                    그때는 월드맵을 거칠 필요가 없다.
+     */
+    private suspend fun openZoneDialog(z: Zone, fromZoneMap: Boolean): Boolean {
+        for (attempt in 1..3) {
+            clearBlockers()
+
+            if (!fromZoneMap || attempt > 1) {
+                // 월드맵부터 다시 잡는다. 동굴을 거치면 어디에 있든 되돌아온다.
+                if (!ensureCaveGrid()) return false
+                tap(tCaveX); delay(4000)
+                tap(z.area.at); delay(6000)
+            }
+
+            val f = frame() ?: run { abort("화면을 읽지 못했다"); return false }
+            if (!Judge.isGameTopBarVisible(f)) {
+                onLog("    지도가 아니다 ($attempt/3) — 다시 잡는다")
+                continue
+            }
+
+            tap(z.at); delay(4000)
+            val d = frame()
+            if (d != null && Judge.isZoneDialog(d)) return true
+            onLog("    지역 창이 안 열렸다 ($attempt/3) — 다시")
+        }
+        abort("${z.name} 지역 창을 열지 못했다")
+        return false
+    }
+
+    /**
+     * 탐험 한 판. 지역 지도로 돌아오면 끝이다.
+     *
+     * 탐험은 화면을 눌러 이벤트를 하나씩 넘기는 방식이다.
+     * 아이템 · 경험치 · 몬스터 · 꽝 중 하나가 나오고, 몇 번 넘기면 지도로 돌아온다.
+     *
+     * 판단은 두 가지만 한다 — 확인된 판정만 쓴다.
+     *   상단 아이콘 줄이 보이면  → 지도다, 끝났다
+     *   FIGHT 육각형이 보이면   → 눌러서 싸운다
+     *   그 밖에는              → 대사를 넘긴다
+     *
+     * @return 지역 지도에 서 있으면 true, 중단이면 null
+     */
+    private suspend fun runOneExploration(): Boolean? {
+        tap(tExploreBtn); delay(6000)
+
+        var taps = 0
+        while (taps < 60 && !LoopStatus.stopRequested) {
+            val f = frame() ?: run { abort("탐험 중 화면을 읽지 못했다"); return null }
+
+            if (Judge.isGameTopBarVisible(f)) return true
+
+            val fy = Judge.fightButtonY(f)
+            if (fy != null) {
+                onLog("    몬스터 — 싸운다")
+                tap(tFightX to fy); delay(6000)
+                taps++
+                continue
+            }
+
+            // 대사 넘기기. 화면 한가운데는 지도로 돌아온 뒤 누르면 위험해서
+            // 대사 상자 자리를 누른다. 지도 판정이 먼저 걸러주지만 한 겹 더 둔다.
+            tap(tExploreNext); delay(2500)
+            taps++
+        }
+        if (LoopStatus.stopRequested) return null
+        abort("탐험이 끝나지 않는다 ($taps 번 넘겼다)")
+        return null
     }
 
     /** 레벨업 1회. true=트리플맥스, null=중단 */
