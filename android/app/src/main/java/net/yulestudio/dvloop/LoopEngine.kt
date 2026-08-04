@@ -162,7 +162,7 @@ class LoopEngine(
             // 지정을 건너뛰어도 출발점은 동굴로 맞춘다.
             // 어디서 시작했는지 모르는 채 용 패널을 누르면 엉뚱한 화면을 건드린다.
             if (!ensureCaveGrid()) return
-            tap(tCaveX); delay(4000)
+            if (!leaveCave()) return
         } else {
             if (!prepareTarget()) return
             prefs.preparedNo = no
@@ -230,14 +230,14 @@ class LoopEngine(
         if (prefs.preparedNo == no && no != 0) {
             onLog("  대상 지정 건너뜀 (이미 즐겨찾기됨)")
             if (!ensureCaveGrid()) return
-            tap(tCaveX); delay(4000)
+            if (!leaveCave()) return
         } else {
             if (!prepareTarget()) return
             prefs.preparedNo = no
         }
 
         // 동굴에서 나와 지도로. 여기부터는 지도 ↔ 탐험만 오간다.
-        tap(tCaveX); delay(4000)
+        if (!leaveCave()) return
 
         var runs = 0
         var onZoneMap = false
@@ -274,7 +274,7 @@ class LoopEngine(
             if (!fromZoneMap || attempt > 1) {
                 // 월드맵부터 다시 잡는다. 동굴을 거치면 어디에 있든 되돌아온다.
                 if (!ensureCaveGrid()) return false
-                tap(tCaveX); delay(4000)
+                if (!leaveCave()) return false
                 tap(z.area.at); delay(6000)
             }
 
@@ -547,6 +547,25 @@ class LoopEngine(
             }
         }
         abort("동굴까지 가지 못했다")
+        return false
+    }
+
+    /**
+     * 동굴에서 나와 지도까지 되돌아간다.
+     *
+     * 닫기 X 한 번으로는 부족하다. 그리드가 펼쳐져 있으면 그리드만 닫히고
+     * 동굴 상세에 남는다. 실제로 그 상태에서 지도인 줄 알고 지역을 눌렀다.
+     * 상단 아이콘 줄이 보일 때까지 닫는다.
+     */
+    private suspend fun leaveCave(): Boolean {
+        repeat(4) {
+            val f = frame()
+            if (f != null && Judge.isGameTopBarVisible(f)) return true
+            tap(tCaveX); delay(4000)
+        }
+        val f = frame()
+        if (f != null && Judge.isGameTopBarVisible(f)) return true
+        abort("동굴에서 지도로 나가지 못했다")
         return false
     }
 
