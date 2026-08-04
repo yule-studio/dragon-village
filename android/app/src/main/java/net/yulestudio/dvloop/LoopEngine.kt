@@ -1038,6 +1038,19 @@ class LoopEngine(
         onLog("  데삭 실행")
         val s = a11y ?: run { abort("접근성 서비스가 꺼졌다"); return false }
 
+        // 여기서부터 설정 앱과 게임을 오간다. 그 사이 태스크가 정리되는데,
+        // 그걸 '사용자가 앱을 닫았다' 로 읽으면 루프가 통째로 멈춘다.
+        // 일부러 나가 있는 중이라고 알려 둔다.
+        LoopStatus.beginLeaving()
+        try {
+            return desakSteps(s)
+        } finally {
+            LoopStatus.endLeaving()
+        }
+    }
+
+    private suspend fun desakSteps(s: LoopAccessibilityService): Boolean {
+
         // 설정 앱이 이미 다른 화면(예: 접근성)에 열려 있으면 그 화면이 그대로
         // 재사용되어 앱 정보가 뜨지 않는다. CLEAR_TASK 로 새로 띄운다.
         ctx.startActivity(

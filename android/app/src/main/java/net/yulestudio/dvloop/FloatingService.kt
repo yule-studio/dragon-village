@@ -368,6 +368,20 @@ object LoopStatus {
     var resumeRequested = false
         private set
 
+    /**
+     * 루프가 일부러 앱 밖으로 나가 있는 중인가.
+     *
+     * 데삭은 설정 앱을 거쳐 게임 데이터를 지우고 게임을 다시 띄운다. 그 사이
+     * 태스크가 정리되면서 '앱이 닫혔다' 로 잘못 읽혀 루프가 통째로 멈췄다.
+     * 사용자가 앱을 닫은 것과 루프가 제 일을 하느라 나간 것은 완전히 다르다.
+     */
+    @Volatile
+    var leavingOnPurpose = false
+        private set
+
+    fun beginLeaving() { leavingOnPurpose = true }
+    fun endLeaving() { leavingOnPurpose = false }
+
     fun update(s: Snapshot) {
         current = s
     }

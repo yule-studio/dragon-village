@@ -109,13 +109,28 @@ class LoopService : Service() {
     }
 
     /**
-     * 최근 앱 목록에서 앱을 밀어 닫았을 때.
+     * 태스크가 정리됐을 때.
      *
-     * 여기서 멈추지 않으면 서비스가 그대로 살아 화면 공유가 켜진 채로 남고,
-     * 루프가 드빌을 계속 다시 띄운다. 실제로 앱을 닫았는데도 게임이 자꾸
-     * 올라와서 손을 못 쓰는 일이 있었다. 닫으면 닫힌 것이다.
+     * 사용자가 앱을 밀어 닫은 것이면 멈춰야 한다. 여기서 멈추지 않으면 서비스가
+     * 그대로 살아 화면 공유가 켜진 채로 남고 루프가 드빌을 계속 다시 띄운다.
+     *
+     * 그런데 이게 불리는 상황이 그것만이 아니다. 데삭은 설정 앱을 CLEAR_TASK 로
+     * 띄워 게임 데이터를 지우는데, 그때도 여기가 불려 루프가 통째로 멈췄다.
+     * 사용자가 닫은 것과 루프가 제 일을 하느라 나간 것은 완전히 다르다.
+     *
+     * 두 가지로 가른다 — 정리된 태스크가 우리 앱의 것인지, 그리고 지금 루프가
+     * 일부러 앱 밖에 나가 있는 중인지.
      */
     override fun onTaskRemoved(rootIntent: Intent?) {
+        val pkg = rootIntent?.component?.packageName ?: rootIntent?.`package`
+        if (pkg != null && pkg != packageName) {
+            log("다른 앱의 태스크가 정리됐다 ($pkg) — 루프는 계속한다")
+            super.onTaskRemoved(rootIntent); return
+        }
+        if (LoopStatus.leavingOnPurpose) {
+            log("루프가 앱 밖에 나가 있는 중이다 (데삭 등) — 계속한다")
+            super.onTaskRemoved(rootIntent); return
+        }
         log("앱이 닫혔다 — 루프와 화면 공유를 멈춘다")
         stopEverything()
         super.onTaskRemoved(rootIntent)
