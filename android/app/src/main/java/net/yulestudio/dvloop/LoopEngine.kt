@@ -73,8 +73,11 @@ class LoopEngine(
     // 탐험
     /** 지역 창의 '탐험' 버튼. 지역이 달라도 창은 같은 자리에 뜬다. */
     private val tExploreBtn = 1490 to 361
-    /** 대사를 넘기는 자리. 대사 상자 안이라 지도로 돌아왔을 때 덜 위험하다. */
-    private val tExploreNext = 1170 to 900
+    /**
+     * 대사를 넘기는 자리. 대사 상자 안이라 지도로 돌아왔을 때 덜 위험하다.
+     * 가운데(1170,900)는 계정삭제 금지구역이라 탭이 거부된다. 왼쪽으로 옮겼다.
+     */
+    private val tExploreNext = 700 to 900
     /** FIGHT 육각형의 가로 위치. 세로는 화면마다 달라 판정으로 찾는다. */
     private val tFightX = 1750
 
@@ -95,8 +98,19 @@ class LoopEngine(
     var abortReason: String? = null
         private set
 
+    /**
+     * 좌표 탭.
+     *
+     * 접근성 서비스는 계정삭제 금지구역이면 탭을 거부한다. 그건 옳은 동작인데,
+     * 거부돼도 화면이 그대로라 루프는 눌린 줄 알고 다음 단계로 넘어갔다.
+     * 실제로 월드맵의 탐험 좌표가 금지구역 안이라, 지도가 안 바뀐 채 다음 탭이
+     * 엉뚱한 지역으로 들어갔고 원인을 찾는 데 한참 걸렸다.
+     * 거부는 반드시 루프 로그에 남긴다.
+     */
     private suspend fun tap(p: Pair<Int, Int>) {
-        a11y?.tap(p.first, p.second)
+        if (a11y?.tap(p.first, p.second) == false) {
+            onLog("    !! 탭 거부됨 (${p.first},${p.second}) — 금지구역이거나 제스처 실패")
+        }
     }
 
     private fun frame(): Bitmap? = ScreenCapture.frame()
