@@ -227,16 +227,13 @@ class LoopEngine(
         if (a11y == null) { abort("접근성 서비스가 꺼져 있다"); return }
         if (!ScreenCapture.isReady) { abort("화면 캡처가 준비되지 않았다"); return }
 
+        // 탐험은 즐겨찾기가 아니라 '지금 선택된 용' 이 나간다.
+        // 그 선택은 동굴에서 칸을 누르면 바뀌므로, 루프를 걸 때마다 다시 지정한다.
+        // 건너뛰었더니 대표가 카멜레용에서 베네지로 바뀐 채 탐험을 돌았다.
+        // 레벨업 루프처럼 한 번만 하고 넘어갈 수 있는 성질이 아니다.
         val prefs = LoopPrefs(ctx)
-        val no = setup.dragon?.no ?: 0
-        if (prefs.preparedNo == no && no != 0) {
-            onLog("  대상 지정 건너뜀 (이미 즐겨찾기됨)")
-            if (!ensureCaveGrid()) return
-            if (!leaveCave()) return
-        } else {
-            if (!prepareTarget()) return
-            prefs.preparedNo = no
-        }
+        if (!prepareTarget()) return
+        prefs.preparedNo = setup.dragon?.no ?: 0
 
         // 동굴에서 나와 지도로. 여기부터는 지도 ↔ 탐험만 오간다.
         if (!leaveCave()) return
@@ -595,14 +592,18 @@ class LoopEngine(
      * 그걸 월드맵으로 여기고 탐험 좌표를 눌러 에스텔라로 들어간 적이 있다.
      */
     private suspend fun goToWorldMap(): Boolean {
-        if (!ensureCaveGrid()) return false
-        if (!leaveCave()) return false
-
-        repeat(3) {
-            val f = frame()
-            if (f != null && Judge.isWorldMap(f)) return true
+        repeat(4) {
             clearBlockers()
-            tap(tWorld); delay(5000)
+            val f = frame() ?: run { abort("화면을 읽지 못했다"); return false }
+            if (Judge.isWorldMap(f)) return true
+
+            if (Judge.isGameTopBarVisible(f)) {
+                tap(tWorld); delay(5000)
+            } else {
+                // 큰 창에 막혀 월드 버튼이 안 보인다. 동굴을 거쳐 지도로 되돌린다.
+                if (!ensureCaveGrid()) return false
+                if (!leaveCave()) return false
+            }
         }
         val f = frame()
         if (f != null && Judge.isWorldMap(f)) return true
