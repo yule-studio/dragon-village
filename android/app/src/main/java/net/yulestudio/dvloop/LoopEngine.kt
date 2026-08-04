@@ -80,6 +80,11 @@ class LoopEngine(
     private val tExploreNext = 700 to 900
     /** FIGHT 육각형의 가로 위치. 세로는 화면마다 달라 판정으로 찾는다. */
     private val tFightX = 1750
+    /**
+     * 지역 창의 닫기 X. 전체 화면 창의 표준 X(2012,53) 와 자리가 다르다.
+     * 그걸 모르고 표준 자리를 여섯 번 누르다 '동굴까지 가지 못했다' 로 멈췄다.
+     */
+    private val tZoneX = 1720 to 83
 
     // 로그인
     private val tStart = 1170 to 540
@@ -699,6 +704,12 @@ class LoopEngine(
                 return@repeat
             }
             val f = frame() ?: return
+            // 탐험 지역 창. 닫기 X 가 전체 화면 창의 표준 자리와 다르다.
+            // 표준 자리를 여섯 번 누르다 '동굴까지 가지 못했다' 로 멈춘 적이 있다.
+            if (Judge.isZoneDialog(f)) {
+                onLog("    지역 창 닫기"); tap(tZoneX); delay(3000)
+                return@repeat
+            }
             // 공지 판정(isNotice)은 여기서 쓰지 않는다. 월드맵 하단도 어두워
             // 오탐이 나고, 그러면 같은 자리를 계속 누르게 된다.
             // 공지는 로그인 직후 문맥에서만 확인한다.
