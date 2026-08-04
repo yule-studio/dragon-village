@@ -150,42 +150,55 @@ object Judge {
      * x=470 세로줄을 훑어 주황 → 파랑 → 회색이 이 순서로 나타나는지 본다.
      */
     fun isLoginSelect(bmp: Bitmap): Boolean {
-        var google = -1
-        var facebook = -1
-        var highbrow = -1
-        var y = 280
-        while (y <= 900) {
-            val c = px(bmp, 470, y)
-            when {
-                r(c) > 150 && r(c) > g(c) + 30 && r(c) > b(c) + 30 ->
-                    if (google < 0) google = y
-                b(c) > 110 && b(c) > r(c) + 40 && b(c) > g(c) + 20 ->
-                    if (facebook < 0 && google >= 0) facebook = y
-                kotlin.math.abs(r(c) - g(c)) < 30 && kotlin.math.abs(g(c) - b(c)) < 30 &&
-                    r(c) in 71..209 ->
-                    if (highbrow < 0 && facebook >= 0) highbrow = y
-            }
-            y += 15
-        }
+        val (google, facebook, highbrow) = loginBands(bmp)
         return google >= 0 && facebook > google && highbrow > facebook
     }
 
     /** 하이브로 버튼의 실제 y 좌표. 못 찾으면 null. */
     fun highbrowButtonY(bmp: Bitmap): Int? {
-        var facebookSeen = false
+        val (_, facebook, highbrow) = loginBands(bmp)
+        return if (facebook < 0 || highbrow < 0) null else highbrow + 45   // 블록 가운데쯤
+    }
+
+    /** 로그인 버튼 세 개(구글=빨강 · 페북=파랑 · 하이브로=회색)의 첫 y. 없으면 -1. */
+    private fun loginBands(bmp: Bitmap): Triple<Int, Int, Int> {
+        var google = -1
+        var facebook = -1
+        var highbrow = -1
         var y = 280
-        var first = -1
         while (y <= 900) {
-            val c = px(bmp, 470, y)
-            if (b(c) > 110 && b(c) > r(c) + 40 && b(c) > g(c) + 20) facebookSeen = true
-            else if (facebookSeen && kotlin.math.abs(r(c) - g(c)) < 30 &&
-                kotlin.math.abs(g(c) - b(c)) < 30 && r(c) in 71..209
-            ) {
-                if (first < 0) first = y
+            when {
+                band(bmp, y, Hue.RED) -> if (google < 0) google = y
+                band(bmp, y, Hue.BLUE) -> if (facebook < 0 && google >= 0) facebook = y
+                band(bmp, y, Hue.GREY) -> if (highbrow < 0 && facebook >= 0) highbrow = y
             }
             y += 15
         }
-        return if (first < 0) null else first + 45   // 블록 가운데쯤
+        return Triple(google, facebook, highbrow)
+    }
+
+    private enum class Hue { RED, BLUE, GREY }
+
+    /**
+     * 그 줄이 넓고 균일한 단색 띠인가.
+     *
+     * 예전에는 x=470 한 점만 봤다. 그러면 색만 맞으면 무엇이든 걸린다.
+     * 실제로 동굴 그리드의 드래곤 썸네일 · 전투 화면 · 인벤토리를
+     * 로그인 선택 화면으로 읽어 멀쩡히 돌던 루프를 멈췄다.
+     * 로그인 버튼은 화면을 가로지르는 넓은 단색 띠다. 그 성질을 검사한다.
+     */
+    private fun band(bmp: Bitmap, y: Int, hue: Hue): Boolean {
+        val pts = intArrayOf(420, 560, 700, 840, 980).map { px(bmp, it, y) }
+        val sums = pts.map { r(it) + g(it) + b(it) }
+        if (sums.max() - sums.min() > 70) return false
+        return pts.all { c ->
+            when (hue) {
+                Hue.RED -> r(c) > 150 && r(c) > g(c) + 30 && r(c) > b(c) + 30
+                Hue.BLUE -> b(c) > 110 && b(c) > r(c) + 40 && b(c) > g(c) + 20
+                Hue.GREY -> kotlin.math.abs(r(c) - g(c)) < 30 &&
+                    kotlin.math.abs(g(c) - b(c)) < 30 && r(c) in 71..209
+            }
+        }
     }
 
     /**
