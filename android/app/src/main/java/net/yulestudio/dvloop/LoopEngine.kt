@@ -52,6 +52,19 @@ class LoopEngine(
     private val tFirstCell = 359 to 246
     private val tStar = 1732 to 936
     private val tCaveX = 2012 to 53
+
+    // 동굴 필터. 여는 버튼과 '단계' 줄의 버튼 여섯 개.
+    // ALL 은 켜지는 버튼이 아니라 전체 해제 버튼이다 (눌러도 금색이 되지 않는다).
+    private val tFilter = 378 to 104
+    private val tStageAll = 1191 to 146
+    private fun stageButton(stage: Stage) = when (stage) {
+        Stage.ADULT -> 1416 to 146
+        Stage.CAPSULE -> 1642 to 146
+        Stage.AWAKENED -> 1191 to 228
+        Stage.TRANSCEND -> 1416 to 228
+        Stage.DESCEND -> 1642 to 228
+    }
+    private val stageButtons get() = Stage.entries.map { it to stageButton(it) }
     /** 전체 화면 게임 창의 표준 닫기 X. 동굴 · 친구 목록 등이 같은 자리를 쓴다. */
     private val tWindowX = 2012 to 53
 
@@ -273,6 +286,72 @@ class LoopEngine(
         tap(tCaveX); delay(4000)
     }
 
+    /**
+     * 단계 필터를 설정한 단계 하나로만 맞춘다.
+     *
+     * 이름만으로는 대상을 못 고른다. 같은 이름이 성체 · 캡슐 · 각성 · 초월 · 강림으로
+     * 여러 마리 있고, 검색 결과 첫 칸에 어느 쪽이 오는지 보장되지 않는다.
+     * 실제로 샤크곤 캡슐을 지정했는데 이미 만렙인 강림이 잡혀 루프가 멈췄다.
+     *
+     * 버튼은 라디오가 아니라 토글이고 여러 개가 동시에 켜진다.
+     * 켜져 있는 걸 또 누르면 꺼지므로, 누르기 전에 반드시 지금 상태를 읽는다.
+     * 필터는 동굴을 닫아도 남아 있어서 다음 진입 때 그대로 걸려 있다.
+     */
+    private suspend fun applyStageFilter(): Boolean {
+        val stage = setup.stage ?: return true    // 단계를 모르면 손대지 않는다
+        val want = stageButton(stage)
+
+        for (attempt in 1..3) {
+            if (!openFilterPanel()) continue
+            var f = frame() ?: continue
+
+            // 다른 단계가 켜져 있으면 ALL 로 한 번에 턴다. ALL 은 전체 해제 버튼이다.
+            val hasOther = stageButtons.any { (s, p) ->
+                s != stage && Judge.isFilterButtonOn(f, p.first, p.second)
+            }
+            if (hasOther) {
+                tap(tStageAll); delay(2000)
+                f = frame() ?: continue
+            }
+            if (!Judge.isFilterButtonOn(f, want.first, want.second)) {
+                tap(want); delay(2000)
+                f = frame() ?: continue
+            }
+
+            val onlyWanted = stageButtons.all { (s, p) ->
+                Judge.isFilterButtonOn(f, p.first, p.second) == (s == stage)
+            }
+            if (onlyWanted) {
+                onLog("    단계 필터: ${stage.label}")
+                return closeFilterPanel()
+            }
+            onLog("    단계 필터가 안 맞는다 ($attempt/3) — 다시")
+            closeFilterPanel()
+        }
+        closeFilterPanel()
+        return false
+    }
+
+    /** 필터창을 연다. 이미 열려 있으면 누르지 않는다 (누르면 닫힌다). */
+    private suspend fun openFilterPanel(): Boolean {
+        repeat(3) {
+            val f = frame()
+            if (f != null && Judge.isFilterOpen(f)) return true
+            tap(tFilter); delay(2500)
+        }
+        return frame()?.let { Judge.isFilterOpen(it) } == true
+    }
+
+    /** 필터창을 닫는다. 닫혀 있으면 아무것도 누르지 않는다. */
+    private suspend fun closeFilterPanel(): Boolean {
+        repeat(3) {
+            val f = frame() ?: return false
+            if (!Judge.isFilterOpen(f)) return true
+            tap(tFilter); delay(2500)
+        }
+        return false
+    }
+
     /** 동굴에서 이름으로 찾아 상세를 연다. 지정·해제가 함께 쓴다. */
     private suspend fun openDragonDetail(name: String): Boolean {
         if (!waitForGameReady()) return false
@@ -288,6 +367,11 @@ class LoopEngine(
             tap(tCave); delay(5000)
             clearBlockers()
             tap(tGridOpen); delay(4000)
+            if (!applyStageFilter()) {
+                onLog("    단계 필터 실패 ($attempt/3) — 되돌리고 재시도")
+                tap(tCaveX); delay(3000)
+                continue
+            }
             tap(tSearch); delay(2500)
             if (typeText(name)) { typed = true; break }
             onLog("    검색 진입 실패 ($attempt/3) — 되돌리고 재시도")

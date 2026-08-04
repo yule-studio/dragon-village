@@ -218,6 +218,40 @@ object Judge {
     }
 
     /**
+     * 동굴 필터창이 열려 있는가.
+     *
+     * 버튼 사이 여백만 본다. 창이 크고 배경이 균일한 짙은 회색이라
+     * 뒤에 있던 그리드 · 동굴 · 월드맵과 확실히 갈린다.
+     * (실측 — 필터창 25~33, 그리드/동굴/월드맵은 색이 제각각)
+     */
+    fun isFilterOpen(bmp: Bitmap): Boolean =
+        FILTER_GAPS.all { (x, y) ->
+            val c = px(bmp, x, y)
+            val hi = maxOf(r(c), g(c), b(c))
+            hi < 50 && hi - minOf(r(c), g(c), b(c)) < 20
+        }
+
+    private val FILTER_GAPS = listOf(
+        1303 to 187, 1529 to 187, 1303 to 105, 1529 to 105,
+        1303 to 270, 1529 to 270, 1100 to 187, 1750 to 146, 1750 to 228,
+    )
+
+    /**
+     * 필터 버튼이 켜져 있는가. 켜지면 금색, 꺼지면 짙은 회색이다.
+     * 글자 획에 걸리지 않도록 버튼의 좌우 여백만 본다.
+     */
+    fun isFilterButtonOn(bmp: Bitmap, cx: Int, cy: Int): Boolean {
+        var gold = 0
+        for (dx in intArrayOf(-72, -60, 60, 72)) {
+            for (dy in intArrayOf(-14, 0, 14)) {
+                val c = px(bmp, cx + dx, cy + dy)
+                if (r(c) > 200 && g(c) > 150 && b(c) < 170 && r(c) - b(c) > 60) gold++
+            }
+        }
+        return gold >= 10
+    }
+
+    /**
      * 팝업의 빨간 X 닫기 버튼 (이벤트 · 공지 등).
      * 게임을 새로 실행하면 이런 팝업이 뜬다. 월드맵에서는 그 자리가
      * 보라/파랑 계열이라 빨강으로 구분된다.
