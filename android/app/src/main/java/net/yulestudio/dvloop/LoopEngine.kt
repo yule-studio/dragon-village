@@ -97,6 +97,8 @@ class LoopEngine(
     private var wins = 0
     /** 방금 돌린 탐험에서 레벨업 창을 봤는가. runOneExploration 이 채운다. */
     private var sawLevelUp = false
+    /** 그 창에 찍혀 있던 실제 레벨. 못 읽었으면 null. */
+    private var readLevel: Int? = null
     private var level = setup.currentLevel
 
     /** 7.0 은 육각형이 시안이라 색으로 교차검증이 된다. 그 미만은 모두 금색이라 불가. */
@@ -264,23 +266,30 @@ class LoopEngine(
             ?.let { Judge.levelBadge(it).first } ?: 0
 
         var runs = 0
-        var onZoneMap = false
         while (!LoopStatus.stopRequested && abortReason == null && runs < 500) {
             val z = ExploreMap.zoneFor(level)
             if (z.party > 1) {
                 abort("${z.name} 은 3마리를 편성해야 한다 — 그 화면은 아직 못 다룬다")
                 return
             }
-            if (!openZoneDialog(z, fromZoneMap = onZoneMap)) return
+            if (!openZoneDialog(z)) return
 
             runs++
             publish("explore")
             onLog("  탐험 $runs 회 — ${z.name}")
-            onZoneMap = runOneExploration() ?: return
+            val onZoneMap = runOneExploration() ?: return
 
             // 레벨업은 창을 본 것으로 센다. 뱃지 지문은 교차 검증용이다.
             if (sawLevelUp) {
-                level++
+                // 창에 찍힌 값이 있으면 그걸 믿는다. 세는 값은 어긋날 수 있고,
+                // 어긋나면 레벨에 안 맞는 탐험지를 계속 도는 일이 생긴다.
+                val shown = readLevel
+                if (shown != null && shown != level) {
+                    onLog("  세던 레벨 Lv.$level 을 화면값 Lv.$shown 로 맞춘다")
+                    level = shown
+                } else {
+                    level++
+                }
                 prefs.currentLevel = level
                 onLog("  레벨업 — Lv.$level")
                 publish("explore")
@@ -317,14 +326,16 @@ class LoopEngine(
      * @param fromZoneMap 방금 탐험을 마치고 그 지역 지도에 서 있으면 true.
      *                    그때는 월드맵을 거칠 필요가 없다.
      */
-    private suspend fun openZoneDialog(z: Zone, fromZoneMap: Boolean): Boolean {
+    private suspend fun openZoneDialog(z: Zone): Boolean {
         for (attempt in 1..3) {
             clearBlockers()
 
-            if (!fromZoneMap || attempt > 1) {
-                if (!goToWorldMap()) return false
-                tap(z.area.at); delay(6000)
-            }
+            // 탐험이 끝나면 그 지역 지도로 돌아온다고 여기고 곧장 지역을 눌렀더니,
+            // 월드맵에 서 있을 때는 같은 좌표가 바다라 엉뚱하게 에스텔라로 들어갔다.
+            // 레벨에 안 맞는 곳이라 3마리 편성 화면이 떠서 아무것도 못 했다.
+            // 몇 초 더 걸려도 매번 월드맵부터 다시 잡는다.
+            if (!goToWorldMap()) return false
+            tap(z.area.at); delay(6000)
 
             val f = frame() ?: run { abort("화면을 읽지 못했다"); return false }
             if (!Judge.isGameTopBarVisible(f)) {
@@ -358,17 +369,30 @@ class LoopEngine(
         tap(tExploreBtn); delay(6000)
 
         sawLevelUp = false
+        readLevel = null
         var taps = 0
         while (taps < 60 && !LoopStatus.stopRequested) {
             val f = frame() ?: run { abort("탐험 중 화면을 읽지 못했다"); return null }
 
             if (Judge.isGameTopBarVisible(f)) return true
 
+            // 배고픔 창. 확인을 누르면 음식을 먹여 회복한다.
+            if (Judge.isHungerPopup(f)) {
+                onLog("    배고픔 — 음식을 먹인다")
+                tap(Judge.hungerOk); delay(3500)
+                taps++
+                continue
+            }
+
             // 레벨업 창은 아무 데나 눌러서는 안 넘어간다. 확인을 눌러야 한다.
             if (Judge.isLevelUpScreen(f)) {
                 val (mark, white) = Judge.gradeMark(f)
                 sawLevelUp = true
-                onLog("    LEVEL UP — 등급 자국 $mark (흰 획 $white)")
+                // 창에 찍힌 값이 진짜다. 세는 값은 어긋날 수 있다.
+                val (shown, unknown) = Judge.levelUpLevel(f)
+                readLevel = shown
+                if (unknown != null) onLog("    ? 모르는 숫자 모양: $unknown")
+                onLog("    LEVEL UP — ${shown?.let { "Lv.$it" } ?: "레벨 못 읽음"} · 등급 자국 $mark (흰 획 $white)")
                 // 등급 숫자를 아직 못 읽는다. 실제 등급을 아는 화면을 남겨
                 // 판독표를 만든다. 추측으로 좌표를 잡으면 또 엉뚱한 데를 누른다.
                 dumpFrame("levelup")
@@ -750,6 +774,11 @@ class LoopEngine(
                 return@repeat
             }
             val f = frame() ?: return
+            // 배고픔 창은 지도에서도 뜬다. 확인을 눌러 음식을 먹인다.
+            if (Judge.isHungerPopup(f)) {
+                onLog("    배고픔 — 음식을 먹인다"); tap(Judge.hungerOk); delay(3500)
+                return@repeat
+            }
             // 탐험 지역 창. 닫기 X 가 전체 화면 창의 표준 자리와 다르다.
             // 표준 자리를 여섯 번 누르다 '동굴까지 가지 못했다' 로 멈춘 적이 있다.
             if (Judge.isZoneDialog(f)) {

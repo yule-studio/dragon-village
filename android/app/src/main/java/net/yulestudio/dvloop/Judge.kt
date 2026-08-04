@@ -266,6 +266,117 @@ object Judge {
     val levelUpOk = 1168 to 824
 
     /**
+     * '당신의 드래곤이 배고파 합니다' 창인가.
+     *
+     * 탐험을 돌리다 보면 중간에 뜬다. 확인을 누르면 음식을 먹여 회복한다.
+     * 이 창을 모르고 대사 넘기듯 60번 누르다 멈춘 적이 있다.
+     *
+     * 확인/취소가 있는 창은 여럿이라 모양만 보고 확인을 누르면 위험하다.
+     * 그래서 이 창의 생김새를 좁게 잡는다 — 넓고 균일한 짙은 패널,
+     * 왼쪽의 파란 확인(0,97,173), 가운데 패널 색, 오른쪽의 따뜻한 회색 취소.
+     * 저장된 캡처 27장에서 오판이 없었다.
+     */
+    fun isHungerPopup(bmp: Bitmap): Boolean {
+        for (x in 700..1700 step 150) {
+            val c = px(bmp, x, 400)
+            if (maxOf(r(c), g(c), b(c)) > 60) return false
+            if (maxOf(r(c), g(c), b(c)) - minOf(r(c), g(c), b(c)) > 20) return false
+        }
+        for (x in intArrayOf(880, 940, 1060, 1120)) {
+            val c = px(bmp, x, 692)
+            if (!(r(c) < 50 && g(c) in 80..130 && b(c) in 150..200)) return false
+        }
+        val mid = px(bmp, 1180, 692)
+        if (maxOf(r(mid), g(mid), b(mid)) > 60) return false
+        for (x in intArrayOf(1240, 1300)) {
+            val c = px(bmp, x, 692)
+            if (!(r(c) in 111..179 && r(c) - b(c) in 0..45 && b(c) <= g(c) && g(c) <= r(c)))
+                return false
+        }
+        return true
+    }
+
+    /** 배고픔 창의 '확인'. 누르면 음식을 먹인다. */
+    val hungerOk = 999 to 661
+
+    /**
+     * 레벨업 창에 찍힌 실제 레벨 ('Lv4 카멜레용' 의 4).
+     *
+     * 루프가 세는 값은 믿을 수 없다. 설정에 넣은 시작 레벨이 틀렸거나 중단됐다
+     * 다시 시작하면 그만큼 어긋난다. 실제로 두 레벨 뒤처진 채 돌아
+     * 난파선에 갈 때가 되었는데도 희망의 숲만 반복했다.
+     *
+     * 글자는 가운데 정렬이라 자릿수가 늘면 자리가 밀린다. 칸을 박아두지 않고
+     * 흰 획이 있는 세로줄을 묶어 글자를 나눈다. 앞의 둘은 'L' 과 'v' 다.
+     *
+     * @return 읽은 레벨. 모르는 모양이면 null 과 그 모양(배우려고 로그에 남긴다).
+     */
+    fun levelUpLevel(bmp: Bitmap): Pair<Int?, String?> {
+        val runs = glyphRuns(bmp)
+        if (runs.size < 3) return null to null      // L · v · 숫자 최소 셋
+        var value = 0
+        for (i in 2 until runs.size) {
+            val (a, b) = runs[i]
+            val pat = glyphBits(bmp, a, b)
+            val d = LEVEL_DIGITS[pat] ?: return null to pat
+            value = value * 10 + d
+        }
+        return value to null
+    }
+
+    private const val LV_Y0 = 298
+    private const val LV_Y1 = 348
+
+    /** 'Lv4' 의 글자별 가로 구간. 흰 획이 이어지는 세로줄을 묶는다. */
+    private fun glyphRuns(bmp: Bitmap): List<Pair<Int, Int>> {
+        val runs = mutableListOf<Pair<Int, Int>>()
+        var start = -1
+        for (x in 1120..1420) {
+            val on = (LV_Y0..LV_Y1).any { y ->
+                val c = px(bmp, x, y); minOf(r(c), g(c), b(c)) > 215
+            }
+            if (on && start < 0) start = x
+            else if (!on && start >= 0) {
+                if (x - start >= 5) runs.add(start to x - 1)
+                start = -1
+            }
+        }
+        if (start >= 0 && 1420 - start >= 5) runs.add(start to 1420)
+        return runs
+    }
+
+    /** 글자 하나를 7x9 격자의 흰/검 무늬로 바꾼다. */
+    private fun glyphBits(bmp: Bitmap, x0: Int, x1: Int): String {
+        val w = x1 - x0 + 1
+        val h = LV_Y1 - LV_Y0 + 1
+        val sb = StringBuilder()
+        for (gy in 0 until 9) {
+            for (gx in 0 until 7) {
+                val sx = x0 + w * gx / 7
+                val ex = maxOf(x0 + w * (gx + 1) / 7, sx + 1)
+                val sy = LV_Y0 + h * gy / 9
+                val ey = maxOf(LV_Y0 + h * (gy + 1) / 9, sy + 1)
+                var n = 0
+                for (yy in sy until ey) for (xx in sx until ex) {
+                    val c = px(bmp, xx, yy)
+                    if (minOf(r(c), g(c), b(c)) > 215) n++
+                }
+                sb.append(if (n * 2 > (ey - sy) * (ex - sx)) '1' else '0')
+            }
+        }
+        return sb.toString()
+    }
+
+    /**
+     * 숫자 무늬표. 실제 화면에서 뽑아 넣는다.
+     * 모르는 모양이 나오면 루프가 그 모양을 로그에 남기므로, 확인하고 여기에 더한다.
+     */
+    private val LEVEL_DIGITS = mapOf(
+        "000000001111100100011000001100011100000110000001111000110011110" to 3,
+        "000000000011100011110001011001001101100110111111100001100000110" to 4,
+    )
+
+    /**
      * 레벨업 창에 찍힌 등급 육각형의 지문.
      *
      * 숫자를 아직 못 읽는다. 육각형 안 흰 획의 모양을 그대로 남겨 두고,
