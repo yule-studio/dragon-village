@@ -46,6 +46,8 @@ class LoopEngine(
 
     // 동굴 (대상 지정)
     private val tCave = 1714 to 88
+    /** 상단 아이콘 줄의 '월드'. 어느 지도에서 눌러도 월드맵으로 돌아온다. */
+    private val tWorld = 1839 to 88
     private val tGridOpen = 532 to 523
     private val tGridClose = 2003 to 523
     private val tSearch = 1515 to 103
@@ -272,9 +274,7 @@ class LoopEngine(
             clearBlockers()
 
             if (!fromZoneMap || attempt > 1) {
-                // 월드맵부터 다시 잡는다. 동굴을 거치면 어디에 있든 되돌아온다.
-                if (!ensureCaveGrid()) return false
-                if (!leaveCave()) return false
+                if (!goToWorldMap()) return false
                 tap(z.area.at); delay(6000)
             }
 
@@ -532,7 +532,15 @@ class LoopEngine(
             if (Judge.isGameTopBarVisible(f)) {
                 tap(tCave); delay(5000)
                 clearBlockers()
-                tap(tGridOpen); delay(4000)
+
+                // 그리드가 이미 펼쳐져 있으면 여는 화살표 자리는 드래곤 칸이다.
+                // 확인 없이 누르면 거기 있는 용이 선택되어 대표가 바뀐다.
+                // 실제로 그렇게 카멜레용이 베네지로 바뀌었다.
+                val c = frame()
+                if (c == null || !Judge.isCaveGrid(c)) {
+                    tap(tGridOpen); delay(4000)
+                }
+
                 val g = frame()
                 if (g != null && (Judge.isCaveGrid(g) || Judge.isFilterOpen(g))) {
                     onLog("    동굴 그리드 진입")
@@ -574,6 +582,31 @@ class LoopEngine(
         val f = frame()
         if (f != null && Judge.isGameTopBarVisible(f)) return true
         abort("동굴에서 지도로 나가지 못했다")
+        return false
+    }
+
+    /**
+     * 월드맵까지 나온다.
+     *
+     * 상단 아이콘 줄의 '월드' 버튼은 어느 지도에서 눌러도 월드맵으로 데려온다.
+     * 월드맵에서 눌러도 그대로 있는다 — 몇 번 눌러도 안전하다.
+     *
+     * 동굴을 닫으면 월드맵이 아니라 '동굴을 열었던 지도' 로 돌아간다.
+     * 그걸 월드맵으로 여기고 탐험 좌표를 눌러 에스텔라로 들어간 적이 있다.
+     */
+    private suspend fun goToWorldMap(): Boolean {
+        if (!ensureCaveGrid()) return false
+        if (!leaveCave()) return false
+
+        repeat(3) {
+            val f = frame()
+            if (f != null && Judge.isWorldMap(f)) return true
+            clearBlockers()
+            tap(tWorld); delay(5000)
+        }
+        val f = frame()
+        if (f != null && Judge.isWorldMap(f)) return true
+        abort("월드맵까지 나가지 못했다")
         return false
     }
 
