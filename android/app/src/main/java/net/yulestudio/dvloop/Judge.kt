@@ -315,12 +315,16 @@ object Judge {
         val runs = glyphRuns(bmp)
         if (runs.size < 3) return null to null      // L · v · 숫자 최소 셋
         var value = 0
+        val unknown = mutableListOf<String>()
         for (i in 2 until runs.size) {
             val (a, b) = runs[i]
             val pat = glyphBits(bmp, a, b)
-            val d = nearestDigit(pat, LEVEL_DIGITS) ?: return null to pat
-            value = value * 10 + d
+            val d = nearestDigit(pat, LEVEL_DIGITS)
+            // 첫 모르는 글자에서 멈추면 나머지를 못 본다. 두 자리 레벨이 되었을 때
+            // 십의 자리만 보고 일의 자리를 놓쳤다. 모르는 것은 다 모아 남긴다.
+            if (d == null) unknown.add(pat) else value = value * 10 + d
         }
+        if (unknown.isNotEmpty()) return null to unknown.joinToString(" | ")
         return value to null
     }
 
@@ -376,6 +380,7 @@ object Judge {
         "000000000011100011110001011001001101100110111111100001100000110" to 4,
         "000000001111101100011110001001111100111111110001111000110111110" to 8,
         "000000001111101100010110001111101110010011000001101001100011100" to 9,
+        "000000000111001111100000110000011000001100000110000111001111111" to 1,
     )
 
     /**
