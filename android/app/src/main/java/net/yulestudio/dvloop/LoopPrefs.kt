@@ -38,6 +38,19 @@ class LoopPrefs(ctx: Context) {
         get() = p.getInt(KEY_TARGET, 45)
         private set(v) = p.edit().putInt(KEY_TARGET, v).apply()
 
+    var kindName: String
+        get() = p.getString(KEY_KIND, LoopKind.LEVEL_UP.name).orEmpty()
+        private set(v) = p.edit().putString(KEY_KIND, v).apply()
+
+    /** 탐험 루프의 등급 하한. 레벨업 루프에서는 쓰지 않는다. */
+    var minGrade: Float
+        get() = p.getFloat(KEY_MIN_GRADE, 3.0f)
+        private set(v) = p.edit().putFloat(KEY_MIN_GRADE, v).apply()
+
+    var minusBudget: Int
+        get() = p.getInt(KEY_MINUS, 5)
+        private set(v) = p.edit().putInt(KEY_MINUS, v).apply()
+
     /** 목표에 닿았는지. 닿았으면 '이어서 시작' 대신 새로 설정하게 한다. */
     val isDone: Boolean get() = hasSetup && currentLevel >= targetLevel
 
@@ -50,6 +63,9 @@ class LoopPrefs(ctx: Context) {
         currentLevel = setup.currentLevel
         currentGrade = setup.currentGrade.toFloat()
         targetLevel = setup.targetLevel
+        kindName = setup.kind.name
+        minGrade = setup.minGrade.toFloat()
+        minusBudget = setup.minusBudget
     }
 
     /** 저장된 설정을 되살린다. 도감에서 드래곤을 다시 찾아 붙인다. */
@@ -63,6 +79,9 @@ class LoopPrefs(ctx: Context) {
             currentLevel = currentLevel,
             currentGrade = currentGrade.toDouble(),
             targetLevel = targetLevel,
+            kind = runCatching { LoopKind.valueOf(kindName) }.getOrDefault(LoopKind.LEVEL_UP),
+            minGrade = minGrade.toDouble(),
+            minusBudget = minusBudget,
         )
     }
 
@@ -86,5 +105,8 @@ class LoopPrefs(ctx: Context) {
         const val KEY_GRADE = "grade"
         const val KEY_TARGET = "target"
         const val KEY_PREPARED = "prepared_no"
+        const val KEY_KIND = "kind"
+        const val KEY_MIN_GRADE = "min_grade"
+        const val KEY_MINUS = "minus_budget"
     }
 }

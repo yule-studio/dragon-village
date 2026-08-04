@@ -132,6 +132,8 @@ class LoopEngine(
     // ---------------- 본체 ----------------
 
     suspend fun run(maxCycles: Int = 1000) {
+        if (setup.kind == LoopKind.EXPLORE) { runExplore(); return }
+
         onLog(
             "루프 시작: ${setup.dragon?.name} " +
                 "Lv.${setup.currentLevel} → Lv.${setup.targetLevel} " +
@@ -185,6 +187,44 @@ class LoopEngine(
                 if (!openDialog()) return
             }
         }
+        LoopStatus.update(LoopStatus.current.copy(running = false, phase = "idle"))
+        FloatingService.refresh(ctx)
+    }
+
+    /**
+     * 탐험 루프.
+     *
+     * 레벨업 루프와 다른 점은 두 가지다.
+     *  - 등급을 '그대로' 지키는 게 아니라 하한 아래로만 안 내려가면 된다
+     *  - 레벨이 오르면 그 레벨에 맞는 탐험지로 옮겨간다
+     *
+     * 지금 들어 있는 것은 대상 지정까지다. 탐험 사이클(터치 진행 · FIGHT ·
+     * 3마리 편성 · 레벨업 감지)은 화면 판정을 실기기로 맞춰가며 잇는다.
+     * 판정 없이 좌표만 보고 누르면 엉뚱한 데를 건드린다 — 그건 이미 여러 번 겪었다.
+     */
+    private suspend fun runExplore() {
+        val zone = ExploreMap.zoneFor(setup.currentLevel)
+        onLog(
+            "탐험 루프 시작: ${setup.dragon?.name} " +
+                "Lv.${setup.currentLevel} → Lv.${setup.targetLevel} " +
+                "(등급 ${String.format("%.1f", setup.minGrade)} 아래로 안 내려가게)"
+        )
+        onLog("  첫 탐험지: ${zone.area.label} → ${zone.name} (Lv.${zone.minLevel}, ${zone.party}마리)")
+
+        if (a11y == null) { abort("접근성 서비스가 꺼져 있다"); return }
+        if (!ScreenCapture.isReady) { abort("화면 캡처가 준비되지 않았다"); return }
+
+        val prefs = LoopPrefs(ctx)
+        val no = setup.dragon?.no ?: 0
+        if (prefs.preparedNo == no && no != 0) {
+            onLog("  대상 지정 건너뜀 (이미 즐겨찾기됨)")
+            if (!waitForGameReady()) return
+        } else {
+            if (!prepareTarget()) return
+            prefs.preparedNo = no
+        }
+
+        onLog("대상 지정까지 마쳤다. 탐험 사이클은 아직 붙이지 않았다.")
         LoopStatus.update(LoopStatus.current.copy(running = false, phase = "idle"))
         FloatingService.refresh(ctx)
     }

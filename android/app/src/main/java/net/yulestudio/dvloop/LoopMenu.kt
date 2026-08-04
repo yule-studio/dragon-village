@@ -52,8 +52,8 @@ enum class LoopKind(
     ),
     EXPLORE(
         "탐험 루프",
-        "탐험을 자동으로 보내요",
-        false,
+        "등급 하한을 지키며 탐험으로 레벨을 올려요",
+        true,
     ),
 }
 
@@ -135,6 +135,7 @@ data class SavedLoop(
     val targetLevel: Int,
     val grade: Double,
     val done: Boolean,
+    val kindTitle: String,
 )
 
 @Composable
@@ -150,7 +151,7 @@ private fun SavedCard(
             .padding(18.dp),
     ) {
         Text(
-            if (s.done) "지난 목표를 끝냈어요" else "하던 작업이 있어요",
+            (if (s.done) "지난 목표를 끝냈어요" else "하던 작업이 있어요") + " · ${s.kindTitle}",
             fontSize = 13.sp, color = Gray,
         )
         Spacer(Modifier.height(6.dp))

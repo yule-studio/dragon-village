@@ -77,21 +77,52 @@ data class LoopSetup(
      */
     val currentGrade: Double = 7.0,
     val targetLevel: Int = 45,
+    /** 어떤 루프인지. 레벨업(데삭)과 탐험은 성공 기준이 다르다. */
+    val kind: LoopKind = LoopKind.LEVEL_UP,
+    /**
+     * 등급 하한. 탐험 루프에서만 쓴다.
+     *
+     * 레벨업 루프는 정해진 등급을 '그대로' 지키는 것이 목표라 한 번만 놓쳐도 데삭이다.
+     * 탐험 루프는 그렇게까지 조이지 않는다. 이 값 아래로만 안 내려가면 된다.
+     */
+    val minGrade: Double = 3.0,
+    /**
+     * 한 레벨에서 마이너스 레벨업을 몇 개까지 쓰고 데삭할지.
+     *
+     * 등급이 하한에 걸리면 마이너스로 되돌려 다시 올리면 된다.
+     * 다만 그게 계속 실패하면 마이너스만 축내므로, 이 개수를 넘으면 데삭이 싸다.
+     */
+    val minusBudget: Int = 5,
 )
 
 @Composable
 fun SetupFlow(
     repo: DexRepository,
+    kind: LoopKind = LoopKind.LEVEL_UP,
     onStart: (LoopSetup) -> Unit,
     onExit: () -> Unit,
 ) {
     var step by remember { mutableStateOf(0) }
-    var setup by remember { mutableStateOf(LoopSetup()) }
+    var setup by remember { mutableStateOf(LoopSetup(kind = kind)) }
+
+    // 탐험 루프는 등급 하한을 따로 묻는다. 그만큼 단계가 하나 늘어난다.
+    val titles = remember(kind) {
+        if (kind == LoopKind.EXPLORE)
+            listOf("드래곤", "단계", "현재 상태", "등급 하한", "목표 레벨", "확인")
+        else
+            listOf("드래곤", "단계", "현재 상태", "목표 레벨", "확인")
+    }
+    val last = titles.lastIndex
 
     BackHandler { if (step > 0) step-- else onExit() }
 
     Column(Modifier.fillMaxSize().background(Color.White).systemBarsPadding()) {
-        StepBar(step, onBack = { if (step > 0) step-- else onExit() })
+        StepBar(step, titles, onBack = { if (step > 0) step-- else onExit() })
+
+        // 탐험 루프에서만 3번 자리에 '등급 하한' 이 끼어든다.
+        // 그 뒤 단계는 한 칸씩 밀린다.
+        val floorStep = if (kind == LoopKind.EXPLORE) 3 else -1
+        val levelStep = if (kind == LoopKind.EXPLORE) 4 else 3
 
         when (step) {
             0 -> DragonStep(repo, setup.dragon) {
@@ -101,10 +132,22 @@ fun SetupFlow(
                 setup = setup.copy(stage = it); step = 2
             }
             2 -> CurrentStep(setup.currentLevel, setup.currentGrade) { lv, gr ->
-                setup = setup.copy(currentLevel = lv, currentGrade = gr); step = 3
+                setup = setup.copy(
+                    currentLevel = lv,
+                    currentGrade = gr,
+                    // 하한이 지금 등급보다 높으면 시작하자마자 실패로 읽힌다
+                    minGrade = minOf(setup.minGrade, gr),
+                )
+                step = 3
             }
-            3 -> LevelStep(setup.targetLevel.coerceAtLeast(setup.currentLevel + 1)) {
-                setup = setup.copy(targetLevel = it); step = 4
+            floorStep -> FloorStep(setup.currentGrade, setup.minGrade, setup.minusBudget) { fl, bd ->
+                setup = setup.copy(minGrade = fl, minusBudget = bd); step = 4
+            }
+            levelStep -> LevelStep(
+                setup.targetLevel.coerceAtLeast(setup.currentLevel + 1),
+                kind,
+            ) {
+                setup = setup.copy(targetLevel = it); step = last
             }
             else -> ConfirmStep(repo, setup) { onStart(setup) }
         }
@@ -112,8 +155,7 @@ fun SetupFlow(
 }
 
 @Composable
-private fun StepBar(step: Int, onBack: () -> Unit) {
-    val titles = listOf("드래곤", "단계", "현재 상태", "목표 레벨", "확인")
+private fun StepBar(step: Int, titles: List<String>, onBack: () -> Unit) {
     Column(Modifier.padding(horizontal = 20.dp)) {
         Row(
             Modifier.fillMaxWidth().height(48.dp),
@@ -125,13 +167,13 @@ private fun StepBar(step: Int, onBack: () -> Unit) {
                 color = Ink,
                 modifier = Modifier.clickable(onClick = onBack).padding(end = 12.dp),
             )
-            Text("${step + 1}/5  ${titles[step]}", fontSize = 14.sp, color = Gray)
+            Text("${step + 1}/${titles.size}  ${titles[step]}", fontSize = 14.sp, color = Gray)
         }
         Row(
             Modifier.fillMaxWidth().padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            repeat(5) { i ->
+            repeat(titles.size) { i ->
                 Box(
                     Modifier
                         .weight(1f)
@@ -404,10 +446,90 @@ private fun CurrentStep(level: Int, grade: Double, onNext: (Int, Double) -> Unit
     }
 }
 
+// ---------------- 탐험 전용: 등급 하한 ----------------
+
+/**
+ * 탐험 루프는 등급을 '유지' 하는 게 아니라 '떨어지지 않게' 하는 것이다.
+ * 하한과, 되돌리는 데 쓸 마이너스 개수를 함께 정한다.
+ */
+@Composable
+private fun FloorStep(
+    currentGrade: Double,
+    floor: Double,
+    budget: Int,
+    onNext: (Double, Int) -> Unit,
+) {
+    var fl by remember { mutableStateOf(floor.coerceAtMost(currentGrade)) }
+    var bd by remember { mutableStateOf(budget) }
+
+    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+      Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+        Text("등급은 어디까지\n허용할까요?", fontSize = 24.sp, lineHeight = 33.sp,
+            fontWeight = FontWeight.Bold, color = Ink)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "탐험은 레벨업을 고를 수 없어서 등급이 조금씩 흔들려요.\n" +
+                "이 값 아래로만 안 내려가면 그대로 계속 올립니다.",
+            fontSize = 14.sp, lineHeight = 21.sp, color = Gray,
+        )
+
+        Spacer(Modifier.height(32.dp))
+
+        Text("등급 하한", fontSize = 13.sp, color = Gray, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StepperButton("−") { if (fl > 1.0) fl = ((fl - 0.1) * 10).toInt() / 10.0 }
+            Text(String.format("%.1f", fl), fontSize = 30.sp,
+                fontWeight = FontWeight.Bold, color = Blue,
+                modifier = Modifier.weight(1f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            StepperButton("+") {
+                if (fl < currentGrade) fl = ((fl + 0.1) * 10).toInt() / 10.0
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "지금 등급 ${String.format("%.1f", currentGrade)} 보다 높게는 둘 수 없어요.",
+            fontSize = 12.sp, color = Gray,
+        )
+
+        Spacer(Modifier.height(28.dp))
+
+        Text("데삭 기준", fontSize = 13.sp, color = Gray, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StepperButton("−") { if (bd > 1) bd-- }
+            Text("마이너스 $bd 개", fontSize = 22.sp,
+                fontWeight = FontWeight.Bold, color = Blue,
+                modifier = Modifier.weight(1f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            StepperButton("+") { if (bd < 20) bd++ }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "한 레벨에서 마이너스를 이만큼 쓰고도 하한을 못 지키면 데삭합니다.\n" +
+                "그 전까지는 마이너스로 되돌려 다시 올려요.",
+            fontSize = 12.sp, lineHeight = 18.sp, color = Gray,
+        )
+        Spacer(Modifier.height(24.dp))
+      }
+      PrimaryButton("다음") { onNext(fl, bd) }
+      Spacer(Modifier.height(24.dp))
+    }
+}
+
 // ---------------- 4단계: 목표 레벨 ----------------
 
 @Composable
-private fun LevelStep(current: Int, onNext: (Int) -> Unit) {
+private fun LevelStep(current: Int, kind: LoopKind, onNext: (Int) -> Unit) {
     var level by remember { mutableStateOf(current) }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
@@ -415,7 +537,10 @@ private fun LevelStep(current: Int, onNext: (Int) -> Unit) {
             fontWeight = FontWeight.Bold, color = Ink)
         Spacer(Modifier.height(8.dp))
         Text(
-            "목표에 닿으면 저절로 멈춰요.\n7.0 이 깨지면 데이터를 지워 되돌리고 다시 시도합니다.",
+            if (kind == LoopKind.EXPLORE)
+                "목표에 닿으면 저절로 멈춰요.\n레벨이 오르면 그 레벨에 맞는 탐험지로 알아서 옮겨 갑니다."
+            else
+                "목표에 닿으면 저절로 멈춰요.\n7.0 이 깨지면 데이터를 지워 되돌리고 다시 시도합니다.",
             fontSize = 14.sp, lineHeight = 21.sp, color = Gray,
         )
 
@@ -503,13 +628,20 @@ private fun ConfirmStep(repo: DexRepository, setup: LoopSetup, onStart: () -> Un
                 }
             }
             Spacer(Modifier.height(16.dp))
+            SummaryLine("루프", setup.kind.title)
             SummaryLine("단계", setup.stage?.label ?: "-")
             SummaryLine("현재", "Lv.${setup.currentLevel} · 등급 ${String.format("%.1f", setup.currentGrade)}")
             SummaryLine("목표 레벨", "Lv.${setup.targetLevel}")
-            SummaryLine(
-                "사용 아이템",
-                if (setup.stage?.awakened == true) "각성 전용 레벨업 +1" else "일반 레벨업 +1",
-            )
+            if (setup.kind == LoopKind.EXPLORE) {
+                SummaryLine("등급 하한", "${String.format("%.1f", setup.minGrade)} 아래로 안 내려감")
+                SummaryLine("데삭 기준", "마이너스 ${setup.minusBudget} 개")
+                SummaryLine("탐험지", "레벨에 맞는 곳으로 자동 이동")
+            } else {
+                SummaryLine(
+                    "사용 아이템",
+                    if (setup.stage?.awakened == true) "각성 전용 레벨업 +1" else "일반 레벨업 +1",
+                )
+            }
         }
 
         Spacer(Modifier.height(20.dp))

@@ -52,6 +52,8 @@ class MainActivity : ComponentActivity() {
                 var screen by remember {
                     mutableStateOf(if (creds.isSaved) Screen.MENU else Screen.LOGIN)
                 }
+                // 설정 화면은 루프 종류마다 묻는 것이 다르다
+                var kind by remember { mutableStateOf(LoopKind.LEVEL_UP) }
                 // 권한은 설정 화면에 다녀오면 바뀔 수 있다. 화면이 돌아올 때마다 다시 본다.
                 var canOverlay by remember { mutableStateOf(hasOverlay()) }
                 LaunchedEffect(screen) { canOverlay = hasOverlay() }
@@ -75,15 +77,15 @@ class MainActivity : ComponentActivity() {
                                 prefs.restore(repo)?.let { startLoop(it) }
                             },
                             onNewSetup = { screen = Screen.SETUP },
-                            onPick = { kind ->
-                                // 지금 열려 있는 것은 레벨업 루프뿐이다
-                                if (kind == LoopKind.LEVEL_UP) screen = Screen.SETUP
+                            onPick = { picked ->
+                                if (picked.ready) { kind = picked; screen = Screen.SETUP }
                             },
                             onLogout = { creds.clear(); screen = Screen.LOGIN },
                         )
 
                         Screen.SETUP -> SetupFlow(
                             repo = repo,
+                            kind = kind,
                             onExit = { screen = Screen.MENU },
                             onStart = { setup ->
                                 prefs.save(setup)
@@ -107,6 +109,8 @@ class MainActivity : ComponentActivity() {
             targetLevel = prefs.targetLevel,
             grade = prefs.currentGrade.toDouble(),
             done = prefs.isDone,
+            kindTitle = runCatching { LoopKind.valueOf(prefs.kindName) }
+                .getOrDefault(LoopKind.LEVEL_UP).title,
         )
     }
 
