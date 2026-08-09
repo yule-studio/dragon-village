@@ -1134,6 +1134,15 @@ class LoopEngine(
             } else if (inExploration) {
                 tap(tExploreNext); delay(2500)
             } else {
+                // 확인만 있는 창은 표준 X 로 안 닫힌다. '데이터를 저장했습니다' 가
+                // 그렇다. 그걸 모르고 X 를 스무 번 누르다 멈춘 적이 있다.
+                // 레벨업 다이얼로그는 건드리지 않는다 — 확인을 누르면 아이템을 쓴다.
+                val ok = if (Judge.isLevelUpDialog(f)) null else Judge.confirmButton(f)
+                if (ok != null) {
+                    onLog("    확인 창 닫기 (${ok.first},${ok.second})")
+                    tap(ok); delay(2500)
+                    continue
+                }
                 // 지도가 아니라 큰 창이다. 표준 닫기 X 자리를 한 번 누른다.
                 onLog("    지도 화면이 아니다 ($round/20) — 창 닫기")
                 tap(tWindowX); delay(4000)
@@ -1465,7 +1474,10 @@ class LoopEngine(
                 // 표준 X 로 안 닫히는 창이 있다. '데이터를 저장했습니다' 처럼
                 // 확인 버튼만 있는 창은 X 를 여덟 번 눌러도 그대로 남는다.
                 // 확인이 보이면 그것부터 누른다.
-                val ok = Judge.confirmButton(f)
+                //
+                // 다만 레벨업 다이얼로그일 때는 손대지 않는다. 거기서 확인을 누르면
+                // 아이템을 써버린다 — 그건 사이클이 할 일이지 창 정리가 할 일이 아니다.
+                val ok = if (Judge.isLevelUpDialog(f)) null else Judge.confirmButton(f)
                 if (ok != null) {
                     onLog("    확인 창 닫기 (${ok.first},${ok.second})")
                     tap(ok); delay(2500)
