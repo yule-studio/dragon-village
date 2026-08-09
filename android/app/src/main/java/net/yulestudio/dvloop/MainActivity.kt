@@ -54,6 +54,9 @@ class MainActivity : ComponentActivity() {
                 }
                 // 설정 화면은 루프 종류마다 묻는 것이 다르다
                 var kind by remember { mutableStateOf(LoopKind.LEVEL_UP) }
+                // 설정을 마쳤을 때 지금 대상으로 삼을지, 대기열에 넣을지
+                var appendToQueue by remember { mutableStateOf(false) }
+                var queueVersion by remember { mutableStateOf(0) }
                 // 권한은 설정 화면에 다녀오면 바뀔 수 있다. 화면이 돌아올 때마다 다시 본다.
                 var canOverlay by remember { mutableStateOf(hasOverlay()) }
                 LaunchedEffect(screen) { canOverlay = hasOverlay() }
@@ -71,12 +74,17 @@ class MainActivity : ComponentActivity() {
                         Screen.MENU -> LoopMenu(
                             creds = creds,
                             canOverlay = canOverlay,
-                            saved = savedLoop(prefs),
+                            saved = remember(screen, queueVersion) { savedLoop(prefs) },
                             onOverlaySetting = { openOverlaySetting() },
                             onResume = {
                                 prefs.restore(repo)?.let { startLoop(it) }
                             },
-                            onNewSetup = { screen = Screen.SETUP },
+                            onNewSetup = { appendToQueue = false; screen = Screen.SETUP },
+                            onAddNext = {
+                                appendToQueue = true
+                                kind = LoopKind.LEVEL_UP
+                                screen = Screen.SETUP
+                            },
                             onPick = { picked ->
                                 when {
                                     // 미션은 대상 드래곤이 필요 없다. 바로 돈다.
@@ -93,8 +101,15 @@ class MainActivity : ComponentActivity() {
                             kind = kind,
                             onExit = { screen = Screen.MENU },
                             onStart = { setup ->
-                                prefs.save(setup)
-                                startLoop(setup)
+                                if (appendToQueue) {
+                                    // 지금 도는 것을 건드리지 않고 줄만 세운다
+                                    prefs.enqueue(setup)
+                                    appendToQueue = false
+                                    queueVersion++
+                                } else {
+                                    prefs.save(setup)
+                                    startLoop(setup)
+                                }
                                 screen = Screen.MENU
                             },
                         )
@@ -117,6 +132,12 @@ class MainActivity : ComponentActivity() {
             grade = prefs.currentGrade.toDouble(),
             done = prefs.isDone,
             kindTitle = kind.title,
+            queue = prefs.queue.mapNotNull { q ->
+                repo.byNo(q.no)?.let { d ->
+                    val st = runCatching { Stage.valueOf(q.stage) }.getOrNull()
+                    "${d.name} ${st?.label ?: ""} → Lv.${q.target}"
+                }
+            },
             minGrade = if (kind == LoopKind.EXPLORE) prefs.minGrade.toDouble() else null,
         )
     }

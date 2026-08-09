@@ -58,13 +58,43 @@ class LoopService : Service() {
             return START_NOT_STICKY
         }
 
+        val firstSetup: LoopSetup = setup
         job?.cancel()
         job = scope.launch {
-            val engine = LoopEngine(applicationContext, setup, Credentials(applicationContext)) {
-                log(it)
+            // 한 마리를 끝내면 대기열의 다음 드래곤으로 잇는다.
+            // '고대신룡 끝나면 빙하고룡, 그다음 파워드래곤' 처럼 밤새 이어 돌리기 위해서다.
+            val prefs = LoopPrefs(applicationContext)
+            val repo = DexRepository(applicationContext)
+            var current: LoopSetup = firstSetup
+
+            while (true) {
+                val engine = LoopEngine(
+                    applicationContext, current, Credentials(applicationContext),
+                ) { log(it) }
+                runCatching { engine.run() }
+                    .onFailure { log("!! 예외: ${it.message}") }
+
+                if (!engine.reachedTarget || LoopStatus.stopRequested) break
+
+                val next = prefs.popQueue(repo)
+                if (next == null) { log("대기열이 비었다 — 모두 끝났다"); break }
+
+                log("다음 대상으로 넘어간다: ${next.dragon?.name} ${next.stage?.label} → Lv.${next.targetLevel}")
+                prefs.save(next)
+                prefs.preparedNo = 0
+                current = next
+                LoopStatus.clearStop()
+                LoopStatus.update(
+                    LoopStatus.Snapshot(
+                        running = true,
+                        target = next.dragon?.name ?: "대상 없음",
+                        stage = next.stage?.label ?: "-",
+                        level = next.currentLevel,
+                        targetLevel = next.targetLevel,
+                    )
+                )
+                FloatingService.refresh(applicationContext)
             }
-            runCatching { engine.run() }
-                .onFailure { log("!! 예외: ${it.message}") }
             ScreenCapture.stop()
             // phase 를 남겨두면 멈춘 뒤에도 '데삭 중' 처럼 보인다.
             LoopStatus.update(LoopStatus.current.copy(running = false, phase = "idle"))

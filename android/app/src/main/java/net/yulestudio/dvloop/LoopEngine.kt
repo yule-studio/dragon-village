@@ -117,6 +117,10 @@ class LoopEngine(
     var abortReason: String? = null
         private set
 
+    /** 목표 레벨에 닿아 끝났는가. 대기열의 다음 드래곤으로 넘어갈지 서비스가 이걸 본다. */
+    var reachedTarget = false
+        private set
+
     /**
      * 좌표 탭.
      *
@@ -219,6 +223,7 @@ class LoopEngine(
                     // 다음 드래곤이 1번 슬롯을 차지할 수 있게 별을 끈다
                     releaseTarget()
                     prefs.preparedNo = 0
+                    reachedTarget = true
                     LoopStatus.update(LoopStatus.current.copy(running = false, phase = "done"))
                     FloatingService.refresh(ctx)
                     return

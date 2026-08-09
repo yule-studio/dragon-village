@@ -65,6 +65,7 @@ fun LoopMenu(
     onOverlaySetting: () -> Unit,
     onResume: () -> Unit,
     onNewSetup: () -> Unit,
+    onAddNext: () -> Unit,
     onPick: (LoopKind) -> Unit,
     onLogout: () -> Unit,
 ) {
@@ -96,7 +97,7 @@ fun LoopMenu(
             }
 
             if (saved != null) {
-                SavedCard(saved, canOverlay, onResume, onNewSetup)
+                SavedCard(saved, canOverlay, onResume, onNewSetup, onAddNext)
                 Spacer(Modifier.height(24.dp))
             }
 
@@ -138,6 +139,8 @@ data class SavedLoop(
     val kindTitle: String,
     /** 탐험 루프의 등급 하한. 레벨업 루프는 null 이다. */
     val minGrade: Double?,
+    /** 이 대상 다음에 이어서 키울 것들. 없으면 빈 목록. */
+    val queue: List<String> = emptyList(),
 )
 
 @Composable
@@ -146,6 +149,7 @@ private fun SavedCard(
     canOverlay: Boolean,
     onResume: () -> Unit,
     onNewSetup: () -> Unit,
+    onAddNext: () -> Unit,
 ) {
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
@@ -172,6 +176,13 @@ private fun SavedCard(
                     "등급 ${String.format("%.1f", s.grade)} 유지",
             fontSize = 13.sp, color = Gray,
         )
+        if (s.queue.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "다음 차례 · " + s.queue.joinToString(" → "),
+                fontSize = 12.sp, lineHeight = 18.sp, color = Blue,
+            )
+        }
         Spacer(Modifier.height(14.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!s.done) {
@@ -197,6 +208,18 @@ private fun SavedCard(
             ) {
                 Text("새로 설정", fontSize = 15.sp, color = Ink)
             }
+        }
+        Spacer(Modifier.height(8.dp))
+        // 지금 대상이 끝나면 이어서 키울 드래곤을 줄 세운다.
+        Box(
+            Modifier.fillMaxWidth().height(44.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White)
+                .border(1.dp, Line, RoundedCornerShape(12.dp))
+                .clickable(onClick = onAddNext),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("＋ 다음 대상 추가", fontSize = 14.sp, color = Blue)
         }
     }
 }

@@ -95,7 +95,55 @@ class LoopPrefs(ctx: Context) {
         get() = p.getInt(KEY_PREPARED, 0)
         set(v) = p.edit().putInt(KEY_PREPARED, v).apply()
 
+    /**
+     * 다음에 이어서 키울 대상들.
+     *
+     * 한 마리를 끝내면 멈추던 것을, 줄을 세워두고 차례로 잇는다.
+     * '고대신룡 끝나면 빙하고룡, 그다음 파워드래곤' 처럼 밤새 이어 돌리기 위해서다.
+     *
+     * 저장 형식은 `번호:단계:목표` 를 `;` 로 이은 것이다. 값이 셋뿐이라
+     * 이 정도면 충분하고, 형식이 깨져도 그 항목만 버리면 된다.
+     */
+    var queue: List<QueueItem>
+        get() = p.getString(KEY_QUEUE, "").orEmpty()
+            .split(";").filter { it.isNotBlank() }
+            .mapNotNull { row ->
+                val f = row.split(":")
+                if (f.size != 3) return@mapNotNull null
+                val no = f[0].toIntOrNull() ?: return@mapNotNull null
+                val target = f[2].toIntOrNull() ?: return@mapNotNull null
+                QueueItem(no, f[1], target)
+            }
+        set(v) = p.edit().putString(
+            KEY_QUEUE, v.joinToString(";") { "${it.no}:${it.stage}:${it.target}" },
+        ).apply()
+
+    fun enqueue(setup: LoopSetup) {
+        val no = setup.dragon?.no ?: return
+        val stage = setup.stage?.name ?: return
+        queue = queue + QueueItem(no, stage, setup.targetLevel)
+    }
+
+    /** 맨 앞을 꺼내 지금 설정으로 올린다. 비어 있으면 null. */
+    fun popQueue(repo: DexRepository): LoopSetup? {
+        val q = queue
+        val head = q.firstOrNull() ?: return null
+        queue = q.drop(1)
+        val dragon = repo.byNo(head.no) ?: return null
+        val stage = runCatching { Stage.valueOf(head.stage) }.getOrNull() ?: return null
+        return LoopSetup(
+            dragon = dragon,
+            stage = stage,
+            currentLevel = 1,
+            currentGrade = 7.0,
+            targetLevel = head.target,
+            kind = LoopKind.LEVEL_UP,
+        )
+    }
+
     fun clear() = p.edit().clear().apply()
+
+    data class QueueItem(val no: Int, val stage: String, val target: Int)
 
     private companion object {
         const val KEY_NO = "dragon_no"
@@ -105,6 +153,7 @@ class LoopPrefs(ctx: Context) {
         const val KEY_GRADE = "grade"
         const val KEY_TARGET = "target"
         const val KEY_PREPARED = "prepared_no"
+        const val KEY_QUEUE = "queue"
         const val KEY_KIND = "kind"
         const val KEY_MIN_GRADE = "min_grade"
         const val KEY_MINUS = "minus_budget"
