@@ -1613,9 +1613,17 @@ class LoopEngine(
         // 한 번 재서 끝내면 반드시 한쪽이 틀린다.
         fun rowsNow(): Pair<Int, Int>? = frame()?.let { Judge.loginFormRows(it) }
 
-        val first = rowsNow() ?: run { abort("로그인 폼의 입력칸을 찾지 못했다"); return false }
-        onLog("    입력칸(키보드 없음): 아이디 y=${first.first} · 비밀번호 y=${first.second}")
-        tap(1170 to first.first); delay(1500)
+        // 노드로 폼을 감지해도 화면은 아직 로딩 중일 수 있다. 칸이 보일 때까지 기다린다.
+        // 바로 중단하면 게임이 뜨는 중에 멀쩡한 로그인이 실패로 끝난다.
+        var first: Pair<Int, Int>? = null
+        repeat(12) {
+            first = rowsNow()
+            if (first != null) return@repeat
+            delay(1500)
+        }
+        val rows0 = first ?: run { abort("로그인 폼의 입력칸을 찾지 못했다"); return false }
+        onLog("    입력칸(키보드 없음): 아이디 y=${rows0.first} · 비밀번호 y=${rows0.second}")
+        tap(1170 to rows0.first); delay(1500)
         if (!typeText(creds.id, expectPassword = false)) { abort("아이디 칸에 포커스가 오지 않았다"); return false }
         delay(800)
 
