@@ -1340,10 +1340,10 @@ class LoopEngine(
                     if (!loginFromSelect()) return false
                     quiet = 0
                 }
-                // 픽셀보다 노드를 먼저 본다. 키보드가 올라오면 입력칸이 가려져
-                // 픽셀 판정이 실패하고, 그러면 로그인 화면을 준비된 게임 화면으로
-                // 읽어 창 닫기를 스무 번 두드린다. 실제로 그렇게 됐다.
-                Judge.isIdForm(f) || a11y?.hasInputField() == true -> {
+                // 노드만 보면 안 된다. 월드맵에서도 입력 노드가 잡혀
+                // 로그인 폼으로 읽고 멀쩡한 화면에서 멈췄다.
+                // 지도가 보이면 이미 로그인된 것이다 — 그때는 절대 로그인으로 가지 않는다.
+                Judge.isIdForm(f) && !Judge.isGameTopBarVisible(f) -> {
                     onLog("    아이디 입력폼 — 자격증명 입력")
                     if (!loginFromForm()) return false
                     quiet = 0
