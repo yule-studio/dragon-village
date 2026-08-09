@@ -187,22 +187,18 @@ class LoopEngine(
         if (a11y == null) { abort("접근성 서비스가 꺼져 있다"); return }
         if (!ScreenCapture.isReady) { abort("화면 캡처가 준비되지 않았다"); return }
 
-        // 대상 지정은 한 번만 한다.
-        // 즐겨찾기는 서버에 남아 데삭 후에도 유지되므로, 목표를 끝낼 때까지
-        // 매번 동굴에 들어갈 이유가 없다. 매번 하면 시간도 들고,
-        // 좌표가 빗나갈 때마다 엉뚱한 용을 건드릴 위험만 커진다.
+        // 대상은 루프를 걸 때마다 다시 지정한다.
+        //
+        // 예전에는 '즐겨찾기가 데삭 후에도 서버에 남으니 한 번만 하면 된다' 고 보고
+        // 같은 용이면 건너뛰었다. 그 전제가 깨지는 경우를 여럿 겪었다.
+        //  - 동굴 그리드에서 탭이 빗나가면 선택된 용이 바뀐다
+        //  - 즐겨찾기가 둘 이상이면 1번 슬롯에 어느 쪽이 올지 보장되지 않는다
+        //  - 설정을 바꿔도 같은 용이면 단계 필터가 다시 걸리지 않는다
+        //    (샤크곤을 캡슐로 지정했는데 강림이 잡혀 멈춘 적이 있다)
+        // 40초쯤 더 걸리지만 어긋날 자리가 없어진다. 탐험 루프와 같은 방식이다.
         val prefs = LoopPrefs(ctx)
-        val no = setup.dragon?.no ?: 0
-        if (prefs.preparedNo == no && no != 0) {
-            onLog("  대상 지정 건너뜀 (이미 즐겨찾기됨)")
-            // 지정을 건너뛰어도 출발점은 동굴로 맞춘다.
-            // 어디서 시작했는지 모르는 채 용 패널을 누르면 엉뚱한 화면을 건드린다.
-            if (!ensureCaveGrid()) return
-            if (!leaveCave()) return
-        } else {
-            if (!prepareTarget()) return
-            prefs.preparedNo = no
-        }
+        if (!prepareTarget()) return
+        prefs.preparedNo = setup.dragon?.no ?: 0
         if (!openDialog()) return
 
         while (cycle < maxCycles && !LoopStatus.stopRequested && abortReason == null) {
