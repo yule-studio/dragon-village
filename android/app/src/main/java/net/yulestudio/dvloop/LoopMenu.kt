@@ -42,8 +42,8 @@ enum class LoopKind(
     ),
     MISSION(
         "미션 루프",
-        "일일·주간 미션을 대신 돌아요",
-        false,
+        "정기 주고받기 · 출석체크 · 보물상자를 대신 해요",
+        true,
     ),
     ARHA(
         "아르하 루프",

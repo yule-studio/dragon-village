@@ -168,6 +168,7 @@ class LoopEngine(
 
     suspend fun run(maxCycles: Int = 1000) {
         if (setup.kind == LoopKind.EXPLORE) { runExplore(); return }
+        if (setup.kind == LoopKind.MISSION) { runMission(); return }
 
         onLog(
             "루프 시작: ${setup.dragon?.name} " +
@@ -227,6 +228,151 @@ class LoopEngine(
         }
         LoopStatus.update(LoopStatus.current.copy(running = false, phase = "idle"))
         FloatingService.refresh(ctx)
+    }
+
+    // ---------------- 미션 루프 ----------------
+
+    private val tMenuFriend = 1963 to 400
+    private val tMenuAttend = 1830 to 400
+    private val tMenuQuest = 1712 to 281
+    /** 월드맵 하늘 왕국 옆 보물상자. 쿨다운이면 눌러도 아무 일도 없다. */
+    private val tTreasure = 1200 to 250
+
+    /**
+     * 하루치 미션을 돈다.
+     *
+     * 한 번 돌면 끝나는 루프다. 오늘 이미 한 것은 기록을 보고 건너뛴다.
+     * 각 단계는 실패해도 다음 단계로 넘어간다 — 하나가 막혔다고 나머지까지
+     * 못 하면 손해다. 무엇을 했고 무엇을 못 했는지는 로그에 남는다.
+     */
+    private suspend fun runMission() {
+        onLog("미션 루프 시작")
+        if (a11y == null) { abort("접근성 서비스가 꺼져 있다"); return }
+        if (!ScreenCapture.isReady) { abort("화면 캡처가 준비되지 않았다"); return }
+
+        val mp = MissionPrefs(ctx)
+        if (!waitForGameReady()) return
+
+        publish("mission")
+        friendGifts(mp)
+        attendance(mp)
+        treasureBox(mp)
+
+        onLog("미션 루프 끝")
+        LoopStatus.update(LoopStatus.current.copy(running = false, phase = "done"))
+        FloatingService.refresh(ctx)
+    }
+
+    /** 메뉴를 열고 항목 하나를 누른다. 메뉴가 안 열리면 false. */
+    private suspend fun openMenuItem(at: Pair<Int, Int>, name: String): Boolean {
+        if (!goToWorldMap()) return false
+        tap(tMenu); delay(3000)
+        val f = frame()
+        if (f == null || !Judge.isGameTopBarVisible(f)) {
+            onLog("  ! 메뉴를 열지 못했다 ($name)"); return false
+        }
+        tap(at); delay(5000)
+        return true
+    }
+
+    /**
+     * 친구에게 정기 보내고 받기. 일일 퀘스트 두 개가 여기서 끝난다.
+     *
+     * 보내기는 속성을 골라야 한다. 요일마다 다른 것을 보낸다 —
+     * 같은 것만 계속 보내면 받는 쪽에 쓸모가 없다.
+     */
+    private suspend fun friendGifts(mp: MissionPrefs) {
+        if (mp.done(MissionPrefs.GIFT_SEND) && mp.done(MissionPrefs.GIFT_RECV)) {
+            onLog("  정기 주고받기 — 오늘 이미 함"); return
+        }
+        if (!openMenuItem(tMenuFriend, "친구")) return
+
+        val bar = frame()?.let { Judge.friendToolbar(it) } ?: run {
+            onLog("  ! 친구 창을 확인하지 못했다 — 아무것도 누르지 않는다"); return
+        }
+        val (sendX, recvX) = bar
+        onLog("  친구 창 — 전부 보내기 x=$sendX · 받기 x=$recvX")
+
+        if (!mp.done(MissionPrefs.GIFT_SEND)) {
+            tap(sendX to 70); delay(3000)
+            val g = frame()
+            if (g != null && Judge.isGiftPicker(g)) {
+                val slot = mp.giftSlotForToday()
+                onLog("  정기 보내기 — 오늘은 ${MissionPrefs.GIFT_NAMES[slot]}")
+                tap(Judge.giftSlots[slot] to Judge.GIFT_SLOT_Y); delay(1500)
+                if (tapConfirm("정기 선택")) {
+                    delay(3000)
+                    tapConfirm("보내기 결과")
+                    mp.markDone(MissionPrefs.GIFT_SEND)
+                    mp.sentSlot = slot
+                }
+            } else {
+                onLog("  ! 정기 선택 창이 안 떴다 — 건너뛴다")
+            }
+        }
+
+        if (!mp.done(MissionPrefs.GIFT_RECV)) {
+            delay(1500)
+            tap(recvX to 70); delay(3000)
+            // 받을 게 있으면 보상창, 없으면 '받을 아이템이 없습니다'.
+            // 어느 쪽이든 파란 확인 하나를 누르면 된다. 두 번까지 본다.
+            var closed = 0
+            repeat(2) { if (tapConfirm("받기 결과")) { closed++; delay(2500) } }
+            if (closed > 0) mp.markDone(MissionPrefs.GIFT_RECV)
+            onLog("  정기 받기 — 확인 $closed 회")
+        }
+
+        tap(tWindowX); delay(3000)
+    }
+
+    /** 출석체크. 창을 열면 오늘치가 찍힌다. 파란 확인만 누른다. */
+    private suspend fun attendance(mp: MissionPrefs) {
+        if (mp.done(MissionPrefs.ATTENDANCE)) { onLog("  출석체크 — 오늘 이미 함"); return }
+        if (!openMenuItem(tMenuAttend, "출석체크")) return
+
+        // 옆의 초록 '드빌.net 출석' 은 웹으로 나간다. 절대 누르지 않는다.
+        // 파란 확인만 찾아 누른다.
+        if (tapConfirm("출석체크")) {
+            mp.markDone(MissionPrefs.ATTENDANCE)
+            onLog("  출석체크 완료")
+        } else {
+            onLog("  ! 출석체크 확인 버튼을 찾지 못했다")
+            tap(tWindowX); delay(2500)
+        }
+    }
+
+    /**
+     * 월드맵의 보물상자.
+     *
+     * 받을 수 있는 상태를 아직 본 적이 없어 판정을 만들지 못했다.
+     * 눌러보고 보상창이 뜨면 받고, 안 뜨면 아직 시간이 안 된 것으로 본다.
+     * 쿨다운 중에 눌러도 아무 일도 일어나지 않는다.
+     */
+    private suspend fun treasureBox(mp: MissionPrefs) {
+        if (mp.done(MissionPrefs.TREASURE)) { onLog("  보물상자 — 오늘 이미 받음"); return }
+        if (!goToWorldMap()) return
+
+        tap(tTreasure); delay(3500)
+        if (tapConfirm("보물상자")) {
+            mp.markDone(MissionPrefs.TREASURE)
+            onLog("  보물상자 수령")
+        } else {
+            onLog("  보물상자 — 아직 시간이 안 됐다")
+        }
+    }
+
+    /**
+     * 모달의 파란 확인을 누른다. 없으면 false.
+     *
+     * 결과창은 버튼이 하나일 때도 둘일 때도 있는데 파란 것은 언제나 확인이다.
+     * 취소는 회색이라 걸리지 않는다.
+     */
+    private suspend fun tapConfirm(what: String): Boolean {
+        val f = frame() ?: return false
+        val at = Judge.confirmButton(f) ?: return false
+        onLog("    $what 확인 (${at.first},${at.second})")
+        tap(at); delay(2500)
+        return true
     }
 
     /**

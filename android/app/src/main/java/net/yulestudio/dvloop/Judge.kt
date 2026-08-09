@@ -254,6 +254,87 @@ object Judge {
     }
 
     /**
+     * 모달의 파란 '확인' 버튼. 없으면 null.
+     *
+     * 결과창은 버튼이 하나('확인')일 때도 있고 둘('확인'/'취소')일 때도 있다.
+     * 그런데 파란 것은 언제나 확인 하나뿐이다 — 취소는 회색이다.
+     * 그래서 파란 덩이만 찾으면 두 경우가 한 번에 풀린다.
+     *
+     * 실측 — 버튼 색 (0,101,173), 결과창에서는 y 630~700 에 온다.
+     */
+    fun confirmButton(bmp: Bitmap): Pair<Int, Int>? {
+        var x0 = Int.MAX_VALUE; var x1 = -1
+        var y0 = Int.MAX_VALUE; var y1 = -1
+        var y = 560
+        while (y <= 900) {
+            var x = 800
+            while (x <= 1500) {
+                val c = px(bmp, x, y)
+                if (r(c) < 60 && g(c) in 70..140 && b(c) in 145..205) {
+                    if (x < x0) x0 = x; if (x > x1) x1 = x
+                    if (y < y0) y0 = y; if (y > y1) y1 = y
+                }
+                x += 10
+            }
+            y += 10
+        }
+        if (x1 < 0 || x1 - x0 < 140 || y1 - y0 < 30) return null
+        return (x0 + x1) / 2 to (y0 + y1) / 2
+    }
+
+    /**
+     * 친구 창의 도구줄 — '전부 보내기' 와 '받기' 의 가로 위치. 아니면 null.
+     *
+     * 갈색 바 위의 흰 글자를 찾는다. 글자는 획 단위로 끊기므로 가까운 것끼리 묶는다.
+     * 왼쪽부터 정렬 · 전부 보내기 · 받기 순이라 뒤의 둘을 쓴다.
+     * 실측(v6.25.1) — 정렬 1188 · 전부 보내기 1462 · 받기 1786.
+     */
+    fun friendToolbar(bmp: Bitmap): Pair<Int, Int>? {
+        val runs = mutableListOf<Pair<Int, Int>>()
+        var start = -1
+        var x = 1150
+        while (x <= 1990) {
+            val on = (45..100 step 4).any { y ->
+                val c = px(bmp, x, y); minOf(r(c), g(c), b(c)) > 200
+            }
+            if (on && start < 0) start = x
+            else if (!on && start >= 0) { runs.add(start to x - 4); start = -1 }
+            x += 4
+        }
+        if (start >= 0) runs.add(start to 1988)
+
+        val merged = mutableListOf<Pair<Int, Int>>()
+        for (rn in runs) {
+            val last = merged.lastOrNull()
+            if (last != null && rn.first - last.second <= 90) {
+                merged[merged.size - 1] = last.first to rn.second
+            } else merged.add(rn)
+        }
+        val words = merged.filter { it.second - it.first >= 20 }
+        if (words.size < 3) return null
+        val send = words[words.size - 2]
+        val recv = words[words.size - 1]
+        return (send.first + send.second) / 2 to (recv.first + recv.second) / 2
+    }
+
+    /** 선물할 정기를 고르는 창의 육각형 여섯 개. 실측 y=503. */
+    val giftSlots = intArrayOf(753, 913, 1072, 1231, 1390, 1549)
+    const val GIFT_SLOT_Y = 503
+
+    /**
+     * '선물할 정기를 선택하세요' 창이 떠 있는가.
+     * 여섯 육각형이 가로로 나란히 있고 그 아래 파란 확인이 있다.
+     */
+    fun isGiftPicker(bmp: Bitmap): Boolean {
+        // 육각형 자리들이 모두 어둡고 서로 다른 색이어야 한다 (속성별로 색이 다르다)
+        val cols = giftSlots.map { px(bmp, it, GIFT_SLOT_Y) }
+        if (cols.any { maxOf(r(it), g(it), b(it)) > 190 }) return false
+        val sums = cols.map { r(it) + g(it) + b(it) }
+        if (sums.max() - sums.min() < 40) return false     // 다 같은 색이면 육각형이 아니다
+        return confirmButton(bmp) != null
+    }
+
+    /**
      * 게임 설정창인지. 저장=초록 / 계정삭제=빨강 이 둘 다 맞아야 인정한다.
      * dvguard.py 의 is_settings_open 과 같은 검사다.
      * 저장은 이 검사를 통과했을 때만 누른다.

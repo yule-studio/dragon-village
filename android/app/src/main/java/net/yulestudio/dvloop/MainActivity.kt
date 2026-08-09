@@ -78,7 +78,12 @@ class MainActivity : ComponentActivity() {
                             },
                             onNewSetup = { screen = Screen.SETUP },
                             onPick = { picked ->
-                                if (picked.ready) { kind = picked; screen = Screen.SETUP }
+                                when {
+                                    // 미션은 대상 드래곤이 필요 없다. 바로 돈다.
+                                    picked == LoopKind.MISSION ->
+                                        startLoop(LoopSetup(kind = LoopKind.MISSION))
+                                    picked.ready -> { kind = picked; screen = Screen.SETUP }
+                                }
                             },
                             onLogout = { creds.clear(); screen = Screen.LOGIN },
                         )
