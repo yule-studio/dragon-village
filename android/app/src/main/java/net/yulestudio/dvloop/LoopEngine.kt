@@ -1175,24 +1175,33 @@ class LoopEngine(
 
     /** 아이디 입력폼에서 이어간다. */
     private suspend fun loginFromForm(): Boolean {
-        // 칸 위치를 화면에서 찾는다. 박아둔 좌표는 실제로 틀려 있었다 —
-        // 비밀번호 칸이 (1170,339) 로 되어 있었는데 그 자리는 배경이다.
-        val f0 = frame() ?: run { abort("로그인 폼을 읽지 못했다"); return false }
-        val rows = Judge.loginFormRows(f0) ?: run {
-            abort("로그인 폼의 입력칸을 찾지 못했다"); return false
-        }
-        val (idY, pwY, loginY) = rows
-        onLog("    입력칸: 아이디 y=$idY · 비밀번호 y=$pwY · 로그인 y=$loginY")
+        // 칸 위치를 그때그때 화면에서 찾는다.
+        // 키보드가 올라오면 폼이 통째로 위로 밀린다 — 실측(v6.25.1):
+        // 키보드 없을 때 아이디 460 / 비밀번호 580, 올라오면 222 / 342.
+        // 한 번 재서 끝내면 반드시 한쪽이 틀린다.
+        fun rowsNow(): Pair<Int, Int>? = frame()?.let { Judge.loginFormRows(it) }
 
-        tap(1170 to idY); delay(1500)
+        val first = rowsNow() ?: run { abort("로그인 폼의 입력칸을 찾지 못했다"); return false }
+        onLog("    입력칸(키보드 없음): 아이디 y=${first.first} · 비밀번호 y=${first.second}")
+        tap(1170 to first.first); delay(1500)
         if (!typeText(creds.id, expectPassword = false)) { abort("아이디 칸에 포커스가 오지 않았다"); return false }
         delay(800)
-        tap(1170 to pwY); delay(1500)
+
+        // 키보드가 올라온 뒤 다시 잰다
+        val second = rowsNow() ?: run { abort("비밀번호 칸을 찾지 못했다"); return false }
+        onLog("    입력칸(키보드 올라옴): 비밀번호 y=${second.second}")
+        tap(1170 to second.second); delay(1500)
         // 여기서 칸을 확인하지 않으면 비밀번호가 아이디 칸에 평문으로 들어간다.
         // 실제로 그렇게 되어 화면에 비밀번호가 그대로 보였다.
         if (!typeText(creds.password, expectPassword = true)) { abort("비밀번호 칸에 포커스가 오지 않았다"); return false }
         delay(800)
         a11y?.back(); delay(1500)
+
+        // 키보드를 내린 뒤라야 로그인 버튼이 보인다
+        val third = rowsNow() ?: run { abort("로그인 버튼을 찾지 못했다"); return false }
+        val loginY = frame()?.let { Judge.loginButtonY(it, third.second) }
+            ?: run { abort("로그인 버튼을 찾지 못했다"); return false }
+        onLog("    로그인 버튼 y=$loginY")
         tap(1170 to loginY); delay(8000)
 
         if (!waitFor(25000) { Judge.isNotice(it) }) {

@@ -763,9 +763,9 @@ object Judge {
      *
      * 입력칸은 폭 전체가 균일한 흰 띠다. 로딩 중의 흰 섬광과 달리 가로로 값이 고르다.
      */
-    fun loginFormRows(bmp: Bitmap): Triple<Int, Int, Int>? {
+    fun loginFormRows(bmp: Bitmap): Pair<Int, Int>? {
         val white = mutableListOf<Int>()
-        var y = 380
+        var y = 120
         while (y <= 700) {
             val pts = intArrayOf(700, 950, 1200, 1450, 1650).map { px(bmp, it, y) }
             if (pts.all { minOf(r(it), g(it), b(it)) > 215 }) {
@@ -774,22 +774,28 @@ object Judge {
             }
             y += 5
         }
-        val bands = group(white, 10)
+        // 입력칸은 키가 크다. 키보드 위쪽에 걸리는 얇은 흰 줄과 갈린다.
+        val bands = group(white, 10).filter { it.last() - it.first() >= 40 }
         if (bands.size < 2) return null
+        return bands[0].let { (it.first() + it.last()) / 2 } to
+            bands[1].let { (it.first() + it.last()) / 2 }
+    }
 
-        val id = bands[0].let { (it.first() + it.last()) / 2 }
-        val pw = bands[1].let { (it.first() + it.last()) / 2 }
-
-        // 비밀번호 칸 아래의 파란 로그인 버튼
+    /**
+     * 로그인 버튼의 세로 중심. 비밀번호 칸 아래의 파란 띠다.
+     *
+     * 키보드가 올라와 있으면 버튼이 가려진다. 키보드를 내린 뒤에 불러야 한다.
+     */
+    fun loginButtonY(bmp: Bitmap, below: Int): Int? {
         val blue = mutableListOf<Int>()
-        y = pw + 30
-        while (y <= 820) {
+        var y = below + 30
+        while (y <= 900) {
             val c = px(bmp, 1170, y)
             if (b(c) > 150 && b(c) > r(c) + 60) blue.add(y)
             y += 5
         }
-        val btn = group(blue, 10).firstOrNull() ?: return null
-        return Triple(id, pw, (btn.first() + btn.last()) / 2)
+        val btn = group(blue, 10).firstOrNull { it.last() - it.first() >= 30 } ?: return null
+        return (btn.first() + btn.last()) / 2
     }
 
     /** 이어진 y 값을 묶는다. 띠의 위아래 끝을 알아야 가운데를 누를 수 있다. */
