@@ -235,8 +235,12 @@ class LoopEngine(
     private val tMenuFriend = 1963 to 400
     private val tMenuAttend = 1830 to 400
     private val tMenuQuest = 1712 to 281
-    /** 월드맵 하늘 왕국 옆 보물상자. 쿨다운이면 눌러도 아무 일도 없다. */
-    private val tTreasure = 1200 to 250
+    /**
+     * 월드맵 하늘 왕국 옆 보물상자. 실측 중심 (1188,262).
+     * 처음에 (1200,250) 으로 눌렀다가 빗나가 '아직 시간이 안 됐다' 로 넘어갔다.
+     * 상자 아래 타이머는 다음 상자까지의 시간이지 못 받는다는 뜻이 아니다.
+     */
+    private val tTreasure = 1188 to 262
 
     /**
      * 하루치 미션을 돈다.
@@ -344,20 +348,21 @@ class LoopEngine(
     /**
      * 월드맵의 보물상자.
      *
-     * 받을 수 있는 상태를 아직 본 적이 없어 판정을 만들지 못했다.
-     * 눌러보고 보상창이 뜨면 받고, 안 뜨면 아직 시간이 안 된 것으로 본다.
-     * 쿨다운 중에 눌러도 아무 일도 일어나지 않는다.
+     * 누르면 '보물상자 보상' 창이 뜨고 보상은 우편함으로 간다.
+     * 상자 아래 타이머는 다음 상자까지의 시간이라 지금 못 받는다는 뜻이 아니다.
+     *
+     * 받을 게 없으면 창이 안 뜬다. 그때는 그냥 넘어간다.
      */
     private suspend fun treasureBox(mp: MissionPrefs) {
         if (mp.done(MissionPrefs.TREASURE)) { onLog("  보물상자 — 오늘 이미 받음"); return }
         if (!goToWorldMap()) return
 
-        tap(tTreasure); delay(3500)
-        if (tapConfirm("보물상자")) {
+        tap(tTreasure); delay(4000)
+        if (tapConfirm("보물상자 보상")) {
             mp.markDone(MissionPrefs.TREASURE)
-            onLog("  보물상자 수령")
+            onLog("  보물상자 수령 (보상은 우편함으로)")
         } else {
-            onLog("  보물상자 — 아직 시간이 안 됐다")
+            onLog("  보물상자 — 받을 것이 없다")
         }
     }
 
