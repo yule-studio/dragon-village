@@ -1175,16 +1175,25 @@ class LoopEngine(
 
     /** 아이디 입력폼에서 이어간다. */
     private suspend fun loginFromForm(): Boolean {
-        tap(tId); delay(1500)
+        // 칸 위치를 화면에서 찾는다. 박아둔 좌표는 실제로 틀려 있었다 —
+        // 비밀번호 칸이 (1170,339) 로 되어 있었는데 그 자리는 배경이다.
+        val f0 = frame() ?: run { abort("로그인 폼을 읽지 못했다"); return false }
+        val rows = Judge.loginFormRows(f0) ?: run {
+            abort("로그인 폼의 입력칸을 찾지 못했다"); return false
+        }
+        val (idY, pwY, loginY) = rows
+        onLog("    입력칸: 아이디 y=$idY · 비밀번호 y=$pwY · 로그인 y=$loginY")
+
+        tap(1170 to idY); delay(1500)
         if (!typeText(creds.id, expectPassword = false)) { abort("아이디 칸에 포커스가 오지 않았다"); return false }
         delay(800)
-        tap(tPw); delay(1500)
+        tap(1170 to pwY); delay(1500)
         // 여기서 칸을 확인하지 않으면 비밀번호가 아이디 칸에 평문으로 들어간다.
         // 실제로 그렇게 되어 화면에 비밀번호가 그대로 보였다.
         if (!typeText(creds.password, expectPassword = true)) { abort("비밀번호 칸에 포커스가 오지 않았다"); return false }
         delay(800)
         a11y?.back(); delay(1500)
-        tap(tLogin); delay(8000)
+        tap(1170 to loginY); delay(8000)
 
         if (!waitFor(25000) { Judge.isNotice(it) }) {
             abort("로그인 후 공지창이 안 뜬다"); return false

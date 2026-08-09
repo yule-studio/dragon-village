@@ -132,13 +132,22 @@ object Judge {
      * → 색상 조건 + 균일도를 함께 본다.
      */
     fun isTitle(bmp: Bitmap): Boolean {
-        val pts = TITLE_XS.map { px(bmp, it, TITLE_ROW_Y) }
-        if (pts.any { !(b(it) > 100 && b(it) > r(it) + 50 && r(it) < 100) }) return false
-        listOf(::r, ::g, ::b).forEach { ch ->
-            val vals = pts.map { ch(it) }
-            if ((vals.max() - vals.min()) > 14) return false
+        // 한 줄만 보면 안 된다. 실측(v6.25.1)에서 그 버튼은 y 980~990 뿐이라
+        // 조금만 밀려도 놓친다. 그 언저리를 훑는다.
+        var y = 940
+        while (y <= 1030) {
+            val pts = TITLE_XS.map { px(bmp, it, y) }
+            val hue = pts.all { b(it) > 100 && b(it) > r(it) + 50 && r(it) < 100 }
+            if (hue) {
+                val flat = listOf(::r, ::g, ::b).all { ch ->
+                    val vals = pts.map { ch(it) }
+                    vals.max() - vals.min() <= 14
+                }
+                if (flat) return true
+            }
+            y += 5
         }
-        return true
+        return false
     }
 
     /** 구글/페이스북/하이브로 선택 화면 */
@@ -154,10 +163,19 @@ object Judge {
         return google >= 0 && facebook > google && highbrow > facebook
     }
 
-    /** 하이브로 버튼의 실제 y 좌표. 못 찾으면 null. */
+    /**
+     * 하이브로 버튼의 실제 y 좌표. 못 찾으면 null.
+     *
+     * 찾은 값은 아이콘 사각형의 **윗변**이다. 거기를 누르면 테두리라 안 먹을 수 있다.
+     * 아래로 훑어 사각형의 끝을 찾고 가운데를 쓴다.
+     * (실측 v6.25.1 — 사각형 y 690~819, 가운데 755)
+     */
     fun highbrowButtonY(bmp: Bitmap): Int? {
         val (_, facebook, highbrow) = loginBands(bmp)
-        return if (facebook < 0 || highbrow < 0) null else highbrow + 65   // 블록 가운데쯤
+        if (facebook < 0 || highbrow < 0) return null
+        var bottom = highbrow
+        while (bottom + 10 <= 1040 && band(bmp, bottom + 10, Hue.GREY)) bottom += 10
+        return (highbrow + bottom) / 2
     }
 
     /** 로그인 버튼 세 개(구글=빨강 · 페북=파랑 · 하이브로=회색)의 첫 y. 없으면 -1. */
@@ -734,6 +752,56 @@ object Judge {
             grey >= 6 -> false
             else -> null
         }
+    }
+
+    /**
+     * 로그인 폼의 세 자리 — 아이디 칸 · 비밀번호 칸 · 로그인 버튼의 세로 중심.
+     *
+     * 좌표를 박아뒀더니 비밀번호 칸이 엉뚱한 데(y=339, 배경)를 가리키고 있었다.
+     * 게임이 업데이트되면 또 밀린다. 흰 입력칸 두 줄과 그 아래 파란 버튼을
+     * 화면에서 직접 찾는다.
+     *
+     * 입력칸은 폭 전체가 균일한 흰 띠다. 로딩 중의 흰 섬광과 달리 가로로 값이 고르다.
+     */
+    fun loginFormRows(bmp: Bitmap): Triple<Int, Int, Int>? {
+        val white = mutableListOf<Int>()
+        var y = 380
+        while (y <= 700) {
+            val pts = intArrayOf(700, 950, 1200, 1450, 1650).map { px(bmp, it, y) }
+            if (pts.all { minOf(r(it), g(it), b(it)) > 215 }) {
+                val sums = pts.map { r(it) + g(it) + b(it) }
+                if (sums.max() - sums.min() <= 18) white.add(y)
+            }
+            y += 5
+        }
+        val bands = group(white, 10)
+        if (bands.size < 2) return null
+
+        val id = bands[0].let { (it.first() + it.last()) / 2 }
+        val pw = bands[1].let { (it.first() + it.last()) / 2 }
+
+        // 비밀번호 칸 아래의 파란 로그인 버튼
+        val blue = mutableListOf<Int>()
+        y = pw + 30
+        while (y <= 820) {
+            val c = px(bmp, 1170, y)
+            if (b(c) > 150 && b(c) > r(c) + 60) blue.add(y)
+            y += 5
+        }
+        val btn = group(blue, 10).firstOrNull() ?: return null
+        return Triple(id, pw, (btn.first() + btn.last()) / 2)
+    }
+
+    /** 이어진 y 값을 묶는다. 띠의 위아래 끝을 알아야 가운데를 누를 수 있다. */
+    private fun group(ys: List<Int>, gap: Int): List<List<Int>> {
+        if (ys.isEmpty()) return emptyList()
+        val out = mutableListOf<MutableList<Int>>()
+        var cur = mutableListOf(ys.first())
+        for (v in ys.drop(1)) {
+            if (v - cur.last() <= gap) cur.add(v) else { out.add(cur); cur = mutableListOf(v) }
+        }
+        out.add(cur)
+        return out
     }
 
     /** 하이브로 아이디/비밀번호 입력 폼 (흰 입력칸 2개) */
