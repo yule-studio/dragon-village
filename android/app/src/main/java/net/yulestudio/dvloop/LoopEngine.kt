@@ -719,7 +719,7 @@ class LoopEngine(
                 continue
             }
 
-            tap(z.at); delay(4000)
+            tap(z.at); delay(3000)
             val d = frame()
             if (d != null && Judge.isZoneDialog(d)) return true
             onLog("    지역 창이 안 열렸다 ($attempt/3) — 다시")
@@ -742,13 +742,13 @@ class LoopEngine(
      * @return 지역 지도에 서 있으면 true, 중단이면 null
      */
     private suspend fun runOneExploration(): Boolean? {
-        tap(tExploreBtn); delay(6000)
+        tap(tExploreBtn); delay(3500)
 
         sawLevelUp = false
         readLevel = null
         readGrade = null
         var taps = 0
-        while (taps < 60 && !LoopStatus.stopRequested) {
+        while (taps < 90 && !LoopStatus.stopRequested) {
             val f = frame() ?: run { abort("탐험 중 화면을 읽지 못했다"); return null }
 
             if (Judge.isGameTopBarVisible(f)) return true
@@ -781,7 +781,7 @@ class LoopEngine(
                 // 등급 숫자를 아직 못 읽는다. 실제 등급을 아는 화면을 남겨
                 // 판독표를 만든다. 추측으로 좌표를 잡으면 또 엉뚱한 데를 누른다.
                 dumpFrame("levelup")
-                tap(Judge.levelUpOk); delay(4000)
+                tap(Judge.levelUpOk); delay(2500)
                 taps++
                 continue
             }
@@ -789,14 +789,15 @@ class LoopEngine(
             val fy = Judge.fightButtonY(f)
             if (fy != null) {
                 onLog("    몬스터 — 싸운다")
-                tap(tFightX to fy); delay(6000)
+                tap(tFightX to fy); delay(3500)
                 taps++
                 continue
             }
 
             // 대사 넘기기. 화면 한가운데는 지도로 돌아온 뒤 누르면 위험해서
             // 대사 상자 자리를 누른다. 지도 판정이 먼저 걸러주지만 한 겹 더 둔다.
-            tap(tExploreNext); delay(2500)
+            // 매 번 화면을 확인하므로 짧게 눌러도 앞서가지 않는다.
+            tap(tExploreNext); delay(1100)
             taps++
         }
         if (LoopStatus.stopRequested) return null

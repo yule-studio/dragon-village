@@ -263,23 +263,15 @@ object Judge {
      * 실측 — 버튼 색 (0,101,173), 결과창에서는 y 630~700 에 온다.
      */
     fun confirmButton(bmp: Bitmap): Pair<Int, Int>? {
-        var x0 = Int.MAX_VALUE; var x1 = -1
-        var y0 = Int.MAX_VALUE; var y1 = -1
-        var y = 560
-        while (y <= 900) {
-            var x = 800
-            while (x <= 1500) {
-                val c = px(bmp, x, y)
-                if (r(c) < 60 && g(c) in 70..140 && b(c) in 145..205) {
-                    if (x < x0) x0 = x; if (x > x1) x1 = x
-                    if (y < y0) y0 = y; if (y > y1) y1 = y
-                }
-                x += 10
-            }
-            y += 10
-        }
-        if (x1 < 0 || x1 - x0 < 140 || y1 - y0 < 30) return null
-        return (x0 + x1) / 2 to (y0 + y1) / 2
+        // 파란 픽셀 전체의 외곽 상자를 쓰면 안 된다. 화면에 파란 것이 둘 이상이면
+        // 그 사이 빈 곳을 가리킨다. 실제로 (975,835) 같은 엉뚱한 자리를 계속 눌렀다.
+        // 이어져 있는 덩이 중 가장 큰 것을 찾아 그 가운데를 쓴다.
+        val box = Locate.blob(
+            bmp, 780, 540, 1560, 1000, step = 6, minCells = 30,
+        ) { r, g, b -> r < 60 && g in 70..145 && b in 145..215 } ?: return null
+        // 버튼은 가로로 길다. 세로로 긴 덩이는 장식이나 게이지다.
+        if (box.w < 150 || box.h < 25 || box.h > 140) return null
+        return box.cx to box.cy
     }
 
     /**
