@@ -1134,6 +1134,13 @@ class LoopEngine(
             } else if (inExploration) {
                 tap(tExploreNext); delay(2500)
             } else {
+                // 설정창은 닫기 X 가 표준 자리가 아니라 패널 안쪽에 있다.
+                // 계정삭제가 있는 창이라 아무 데나 누르면 안 된다 — 제 X 로만 닫는다.
+                if (Judge.isSettingsOpen(f)) {
+                    onLog("    설정창 닫기")
+                    tap(tSetX); delay(3000)
+                    continue
+                }
                 // 확인만 있는 창은 표준 X 로 안 닫힌다. '데이터를 저장했습니다' 가
                 // 그렇다. 그걸 모르고 X 를 스무 번 누르다 멈춘 적이 있다.
                 // 레벨업 다이얼로그는 건드리지 않는다 — 확인을 누르면 아이템을 쓴다.
