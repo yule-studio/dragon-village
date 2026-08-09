@@ -67,6 +67,14 @@ class LoopEngine(
         Stage.DESCEND -> 1642 to 228
     }
     private val stageButtons get() = Stage.entries.map { it to stageButton(it) }
+
+    // 레벨 필터. ALL · 1 · 20 / 21 · 35 · 45 두 줄이다. 실측 y 848 · 924.
+    private val tLevelAll = 1191 to 848
+    private val tLevel45 = 1642 to 924
+    private val levelButtons = listOf(
+        1191 to 848, 1416 to 848, 1642 to 848,
+        1191 to 924, 1416 to 924, 1642 to 924,
+    )
     /** 전체 화면 게임 창의 표준 닫기 X. 동굴 · 친구 목록 등이 같은 자리를 쓴다. */
     private val tWindowX = 2012 to 53
 
@@ -747,6 +755,68 @@ class LoopEngine(
             closeFilterPanel()
         }
         closeFilterPanel()
+        return false
+    }
+
+    /**
+     * 미션용 탐험 대상을 고른다 — **일반 각성 45렙**.
+     *
+     * 미션의 '성실한 탐험가' 는 탐험 10회다. 키우는 중인 용으로 돌리면 원치 않는
+     * 경험치가 들어가 등급이 흔들린다. 더 오를 데가 없는 45렙으로만 돌려야 한다.
+     * 각성으로 맞추는 것은 캡슐 전장 미션까지 같은 용으로 쓰기 위해서다.
+     *
+     * 진각성은 제외한다. 겉모습으로는 일반 각성과 구분되지 않고, 칸 아래 마크가
+     * 빨간 육각형인지 보라 원형인지로만 갈린다.
+     */
+    private suspend fun pickMissionDragon(): Boolean {
+        if (!ensureCaveGrid()) return false
+        if (!openFilterPanel()) { abort("필터창을 열지 못했다"); return false }
+
+        val f0 = frame() ?: run { abort("필터창을 읽지 못했다"); return false }
+        // 단계는 각성 하나만, 레벨은 45 하나만 켠다. 버튼은 토글이라 상태를 먼저 본다.
+        if (stageButtons.any { (s, p) ->
+                s != Stage.AWAKENED && Judge.isFilterButtonOn(f0, p.first, p.second)
+            }
+        ) { tap(tStageAll); delay(2000) }
+        if (frame()?.let { Judge.isFilterButtonOn(it, 1191, 228) } != true) {
+            tap(stageButton(Stage.AWAKENED)); delay(2000)
+        }
+
+        val f1 = frame() ?: run { abort("필터창을 읽지 못했다"); return false }
+        if (levelButtons.any { it != tLevel45 && Judge.isFilterButtonOn(f1, it.first, it.second) }) {
+            tap(tLevelAll); delay(2000)
+        }
+        if (frame()?.let { Judge.isFilterButtonOn(it, tLevel45.first, tLevel45.second) } != true) {
+            tap(tLevel45); delay(2000)
+        }
+
+        val f2 = frame() ?: run { abort("필터창을 읽지 못했다"); return false }
+        val stageOk = Judge.isFilterButtonOn(f2, 1191, 228)
+        val levelOk = Judge.isFilterButtonOn(f2, tLevel45.first, tLevel45.second)
+        if (!stageOk || !levelOk) {
+            abort("각성·45 필터를 맞추지 못했다 (각성=$stageOk 45=$levelOk)"); return false
+        }
+        onLog("    필터: 각성 + 레벨 45")
+        if (!closeFilterPanel()) { abort("필터창을 닫지 못했다"); return false }
+
+        val g = frame() ?: run { abort("목록을 읽지 못했다"); return false }
+        for (i in 0 until 5) {
+            val cx = Judge.gridCellX(i)
+            when (Judge.isTrueAwakened(g, cx)) {
+                false -> {
+                    onLog("    ${i + 1}번 칸 선택 (일반 각성)")
+                    tap(cx to Judge.GRID_CELL_Y); delay(3000)
+                    tap(tGridClose); delay(3000)
+                    return true
+                }
+                true -> onLog("    ${i + 1}번 칸은 진각성 — 건너뜀")
+                null -> {
+                    abort("일반 각성 45렙을 찾지 못했다 (${i + 1}번 칸까지 확인)")
+                    return false
+                }
+            }
+        }
+        abort("앞 다섯 칸이 모두 진각성이다")
         return false
     }
 

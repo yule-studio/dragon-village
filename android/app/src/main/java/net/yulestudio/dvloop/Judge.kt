@@ -317,6 +317,41 @@ object Judge {
         return (send.first + send.second) / 2 to (recv.first + recv.second) / 2
     }
 
+    /**
+     * 동굴 그리드 첫 줄의 칸 가로 중심. 실측 — 첫 칸 363, 간격 163.
+     * 필터를 걸면 이 순서로 채워진다.
+     */
+    fun gridCellX(i: Int) = 363 + 163 * i
+
+    /** 그리드 칸의 세로 중심. */
+    const val GRID_CELL_Y = 246
+
+    /**
+     * 그 칸의 드래곤이 진각성인가.
+     *
+     * 칸 아래쪽에 마크가 여섯 개 붙는데, 진각성은 **빨간 육각형**, 일반 각성은
+     * **보라 원형**이다. 겉모습으로는 둘이 구분되지 않아 이걸 봐야 한다.
+     * 미션용 탐험은 일반 각성 45렙으로만 돌려야 해서 진각성을 걸러야 한다.
+     *
+     * 실측(v6.25.1) — 마크 줄 y=302. 진각성 빨강 8/12, 일반 각성 빨강 0.
+     *
+     * @return true=진각성, false=일반, null=마크를 못 읽음(빈 칸일 수 있다)
+     */
+    fun isTrueAwakened(bmp: Bitmap, cellX: Int): Boolean? {
+        var red = 0
+        var purple = 0
+        for (dx in -55..55 step 10) {
+            val c = px(bmp, cellX + dx, 302)
+            if (r(c) > 150 && g(c) < 90 && b(c) < 90) red++
+            else if (b(c) > 140 && r(c) > 90 && g(c) < 110 && b(c) > g(c) + 50) purple++
+        }
+        return when {
+            red >= 6 -> true
+            purple >= 6 -> false
+            else -> null
+        }
+    }
+
     /** 선물할 정기를 고르는 창의 육각형 여섯 개. 실측 y=503. */
     val giftSlots = intArrayOf(753, 913, 1072, 1231, 1390, 1549)
     const val GIFT_SLOT_Y = 503
