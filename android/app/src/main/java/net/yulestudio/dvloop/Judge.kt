@@ -126,6 +126,35 @@ object Judge {
     }
 
     /**
+     * 로그인 직후 뜨는 전체화면 광고의 '닫기' 줄. 없으면 null.
+     *
+     * 이 광고에는 X 가 없다. 그림 아래에 새까만 띠가 있고 그 안에 '닫기' 글자만 있다.
+     * 그걸 모르고 X 를 찾다가 **광고 그림을 눌러 크롬이 열렸다.**
+     * 게임이 뒤로 밀려 루프가 손을 못 썼다.
+     *
+     * 실측(v6.25.1) — 그림은 y 975 까지, 검정 띠 y 976~1035, 그 안 x 1200 근처에 흰 글자.
+     * 가운데는 글자라 어둡지 않다. 양옆만 본다.
+     * 공지창의 회색 띠(sum<260)와 달리 이건 거의 완전한 검정(1,2,2)이다.
+     */
+    fun adCloseY(bmp: Bitmap): Int? {
+        val rows = mutableListOf<Int>()
+        var y = 900
+        while (y <= 1065) {
+            val flanks = intArrayOf(400, 700, 1600, 1900).map { px(bmp, it, y) }
+            if (flanks.all { maxOf(r(it), g(it), b(it)) < 25 }) rows.add(y)
+            y += 4
+        }
+        val band = group(rows, 8).firstOrNull { it.last() - it.first() >= 28 } ?: return null
+        // 띠 안에 밝은 글자가 있어야 '닫기' 줄이다. 그냥 검은 여백이면 아니다
+        val mid = (band.first() + band.last()) / 2
+        val bright = (1050..1300 step 10).any { x ->
+            val c = px(bmp, x, mid)
+            minOf(r(c), g(c), b(c)) > 120
+        }
+        return if (bright) mid else null
+    }
+
+    /**
      * 타이틀 화면(TOUCH TO START).
      * '이전 드빌아이디' 버튼은 넓고 균일한 진한 파랑이다.
      * 월드맵의 에스텔라 지역도 그 자리가 파랗지만 그림이라 색이 고르지 않다.

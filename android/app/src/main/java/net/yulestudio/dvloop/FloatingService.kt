@@ -81,14 +81,31 @@ class FloatingService : Service() {
 
     // ---------- 버블 (접힘) ----------
 
+    /**
+     * 접힌 버블.
+     *
+     * 예전에는 원 안에 작은 네모 아이콘을 넣고 그 아래 레벨을 적었다.
+     * 원 안에 네모가 떠 있는 꼴이라 어중간하고, 아이콘도 작아 무엇인지 잘 안 보였다.
+     * 그림이 원을 꽉 채우게 하고 글자는 뺐다 — 레벨은 펼친 카드에서 보면 된다.
+     */
     private fun buildBubble() {
         val icon = ImageView(this).apply {
             setImageResource(R.mipmap.ic_launcher)
-            layoutParams = LinearLayout.LayoutParams(dp(32), dp(32))
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
+            )
+            // 원 밖으로 삐져나온 모서리를 잘라낸다
+            clipToOutline = true
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(v: View, o: android.graphics.Outline) {
+                    o.setOval(0, 0, v.width, v.height)
+                }
+            }
         }
-        bubbleLabel = TextView(this).apply {
-            setTextColor(Color.WHITE); textSize = 9f; gravity = Gravity.CENTER
-        }
+        // 카드 쪽에서 쓰는 이름이라 남겨둔다. 버블에는 붙이지 않는다.
+        bubbleLabel = TextView(this)
         bubble = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -97,7 +114,6 @@ class FloatingService : Service() {
                 setColor(Color.parseColor("#F2191F28"))
             }
             addView(icon)
-            addView(bubbleLabel)
             setOnClickListener { expand() }
             setOnTouchListener(BubbleDrag())
         }

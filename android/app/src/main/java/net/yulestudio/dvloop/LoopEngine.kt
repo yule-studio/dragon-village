@@ -845,6 +845,12 @@ class LoopEngine(
                 onLog("    지역 창 닫기"); tap(tZoneX); delay(3000)
                 return@repeat
             }
+            // 전체화면 광고. X 가 없고 아래 검정 띠의 '닫기' 만 있다.
+            // X 를 찾다가 광고 그림을 눌러 크롬이 열린 적이 있다. 먼저 본다.
+            Judge.adCloseY(f)?.let { ay ->
+                onLog("    광고 닫기 (y=$ay)"); tap(1170 to ay); delay(3500)
+                return@repeat
+            }
             // 공지 판정(isNotice)은 여기서 쓰지 않는다. 월드맵 하단도 어두워
             // 오탐이 나고, 그러면 같은 자리를 계속 누르게 된다.
             // 공지는 로그인 직후 문맥에서만 확인한다.
@@ -915,10 +921,17 @@ class LoopEngine(
                     if (!loginFromSelect()) return false
                     quiet = 0
                 }
-                Judge.isIdForm(f) -> {
+                // 픽셀보다 노드를 먼저 본다. 키보드가 올라오면 입력칸이 가려져
+                // 픽셀 판정이 실패하고, 그러면 로그인 화면을 준비된 게임 화면으로
+                // 읽어 창 닫기를 스무 번 두드린다. 실제로 그렇게 됐다.
+                Judge.isIdForm(f) || a11y?.hasInputField() == true -> {
                     onLog("    아이디 입력폼 — 자격증명 입력")
                     if (!loginFromForm()) return false
                     quiet = 0
+                }
+                Judge.adCloseY(f) != null -> {
+                    val ay = Judge.adCloseY(f)!!
+                    onLog("    광고 닫기 (y=$ay)"); tap(1170 to ay); delay(4000); quiet = 0
                 }
                 Judge.isNotice(f) -> {
                     onLog("    공지 닫기"); tap(tNoticeClose); delay(4000); quiet = 0

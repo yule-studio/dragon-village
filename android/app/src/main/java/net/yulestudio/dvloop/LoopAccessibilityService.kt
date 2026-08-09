@@ -165,6 +165,27 @@ class LoopAccessibilityService : AccessibilityService() {
         return null
     }
 
+    /**
+     * 지금 화면에 글자를 넣을 칸이 있는가.
+     *
+     * 로그인 폼을 픽셀로만 보면 키보드가 올라왔을 때 입력칸이 가려져 놓친다.
+     * 실제로 그래서 로그인 화면을 '준비된 게임 화면' 으로 읽고 창 닫기를
+     * 스무 번 두드렸다. 노드는 키보드와 무관하게 남아 있다.
+     */
+    fun hasInputField(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        return try { findEditable(root, 0) } finally { runCatching { root.recycle() } }
+    }
+
+    private fun findEditable(node: AccessibilityNodeInfo?, depth: Int): Boolean {
+        if (node == null || depth > 12) return false
+        if (node.isEditable || node.isPassword) return true
+        for (i in 0 until node.childCount) {
+            if (findEditable(node.getChild(i), depth + 1)) return true
+        }
+        return false
+    }
+
     /** 지금 앞에 있는 창의 패키지. 게임이 아닌 것이 올라오면 방해물이다. */
     fun foregroundPackage(): String? =
         rootInActiveWindow?.let { r ->
