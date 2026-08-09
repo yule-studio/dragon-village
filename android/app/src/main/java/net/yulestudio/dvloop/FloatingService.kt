@@ -73,9 +73,19 @@ class FloatingService : Service() {
         else
             @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
+    /**
+     * 미니창의 창 속성.
+     *
+     * FLAG_KEEP_SCREEN_ON 이 핵심이다. 접근성 서비스가 보내는 탭은 시스템이
+     * '사용자 조작' 으로 치지 않아서, 루프가 아무리 화면을 눌러도 절전 타이머는
+     * 계속 돌아간다. 시간이 되면 화면이 꺼지고 잠금 화면이 올라오는데,
+     * 그러면 미니창은 가려지고 화면 캡처도 무의미해진다.
+     * 미니창이 떠 있는 동안은 화면을 켜둔다 — 루프가 도는 동안이 곧 그 시간이다.
+     */
     private fun params(w: Int, h: Int) = WindowManager.LayoutParams(
         w, h, overlayType(),
-        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
         PixelFormat.TRANSLUCENT,
     ).apply { gravity = Gravity.TOP or Gravity.START }
 
