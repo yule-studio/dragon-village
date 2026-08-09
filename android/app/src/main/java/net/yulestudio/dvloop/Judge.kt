@@ -352,6 +352,55 @@ object Judge {
         }
     }
 
+    /**
+     * 도전의 전장 대전목록에서 아직 안 친 상대의 y. 없으면 빈 목록.
+     *
+     * 각 줄 오른쪽에 칼 육각형이 있는데, 칠 수 있으면 **빨강**, 이미 이겼으면 **회색**이다.
+     * 회색을 누르면 아무 일도 일어나지 않아 헛돈다.
+     * 실측 — 칼은 x 1874~1954 에 있다.
+     */
+    fun arenaRedSwords(bmp: Bitmap): List<Int> {
+        val on = mutableListOf<Int>()
+        var y = 150
+        while (y <= 1000) {
+            var n = 0
+            for (dx in -40..40 step 10) {
+                val c = px(bmp, 1914 + dx, y)
+                if (r(c) > 150 && g(c) < 90 && b(c) < 90) n++
+            }
+            if (n >= 6) on.add(y)
+            y += 4
+        }
+        return group(on, 8).filter { it.last() - it.first() >= 30 }
+            .map { (it.first() + it.last()) / 2 }
+    }
+
+    /**
+     * 전투 결과창의 빨간 '확인'. 없으면 null.
+     *
+     * 전장 결과창은 확인이 파랑이 아니라 빨강이다. 파란 것만 찾으면 못 넘어간다.
+     * 실측 — 캡슐 전장 (1168,908), 도전의 전장 (1168,812) 처럼 세로가 조금씩 다르다.
+     */
+    fun redConfirmButton(bmp: Bitmap): Pair<Int, Int>? {
+        var x0 = Int.MAX_VALUE; var x1 = -1
+        var y0 = Int.MAX_VALUE; var y1 = -1
+        var y = 700
+        while (y <= 1000) {
+            var x = 950
+            while (x <= 1400) {
+                val c = px(bmp, x, y)
+                if (r(c) > 150 && g(c) < 80 && b(c) < 80) {
+                    if (x < x0) x0 = x; if (x > x1) x1 = x
+                    if (y < y0) y0 = y; if (y > y1) y1 = y
+                }
+                x += 10
+            }
+            y += 10
+        }
+        if (x1 < 0 || x1 - x0 < 140 || y1 - y0 < 30) return null
+        return (x0 + x1) / 2 to (y0 + y1) / 2
+    }
+
     /** 선물할 정기를 고르는 창의 육각형 여섯 개. 실측 y=503. */
     val giftSlots = intArrayOf(753, 913, 1072, 1231, 1390, 1549)
     const val GIFT_SLOT_Y = 503

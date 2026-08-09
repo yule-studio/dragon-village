@@ -59,6 +59,12 @@ class MissionPrefs(ctx: Context) {
         const val QUEST_CLAIM = "quest_claim"
         const val FREE_REWARD = "free_reward"
         const val EXPLORE10 = "explore10"
+        const val CAPSULE_ARENA = "capsule_arena"
+        const val CHALLENGE = "challenge"
+        const val TOURNAMENT = "tournament"
+
+        /** 도전의 전장은 하루 열 번까지 친다. 퀘스트는 다섯 번이면 끝난다. */
+        const val CHALLENGE_MAX = 10
 
         /** 무료 보상은 하루 세 번, 탐험 미션은 열 번이다. */
         const val FREE_REWARD_MAX = 3

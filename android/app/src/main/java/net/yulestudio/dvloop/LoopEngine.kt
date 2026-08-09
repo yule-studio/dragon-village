@@ -275,6 +275,11 @@ class LoopEngine(
         treasureBox(mp)
         freeRewards(mp)
         missionExplore(mp)
+        // 재화를 쓰는 것들은 뒤에 둔다. 앞의 공짜 미션이 먼저 끝나 있어야
+        // 중간에 막혀도 손해가 적다.
+        capsuleArena(mp)
+        challengeArena(mp)
+        tournament(mp)
         claimQuests(mp)
 
         onLog("미션 루프 끝")
@@ -379,6 +384,129 @@ class LoopEngine(
         } else {
             onLog("  보물상자 — 받을 것이 없다")
         }
+    }
+
+    // 마을 · 전장 좌표 (전부 실측)
+    private val tVillage = 861 to 798            // 월드맵 → 마을
+    private val tBattleground = 1596 to 190      // 마을 → 드래곤 전장
+    private val tCapsuleArena = 918 to 520       // 캡슐드래곤 전장
+    private val tChallengeArena = 1420 to 520    // 도전의 전장
+    private val tColosseum = 1237 to 330         // 마을 → 콜로세움
+    private val tTournament = 1385 to 480        // 콜로세움 → TOURNAMENT
+    private val tGeneral = 705 to 480            // 토너먼트 → GENERAL
+    private val tArenaFight = 620 to 500         // CAPSULE ARENA 의 FIGHT!
+    private val tPartyDone = 465 to 205          // ATTACK PARTY 의 선택완료
+    private val tSkip = 1170 to 190              // 전투 SKIP (미실측 — 없으면 그냥 지나간다)
+    private val tPartyCards = listOf(505 to 450, 1010 to 450, 1490 to 450, 1970 to 450)
+
+    /** 마을까지 간다. 전장·콜로세움이 모두 여기 있다. */
+    private suspend fun goToVillage(): Boolean {
+        if (!goToWorldMap()) return false
+        tap(tVillage); delay(6000)
+        val f = frame()
+        if (f == null || !Judge.isGameTopBarVisible(f)) {
+            onLog("  ! 마을로 가지 못했다"); return false
+        }
+        return true
+    }
+
+    /**
+     * 캡슐드래곤 전장 참가.
+     *
+     * 들어가면 지난번 등록분 전투가 먼저 돌아간다. 그게 끝나야 다시 등록할 수 있고,
+     * 등록을 해야 미션이 인정된다. 참가에 다이아 3개가 든다 — 게임이 정한 조건이다.
+     */
+    private suspend fun capsuleArena(mp: MissionPrefs) {
+        if (mp.done(MissionPrefs.CAPSULE_ARENA)) { onLog("  캡슐 전장 — 오늘 이미 참가"); return }
+        if (!goToVillage()) return
+        tap(tBattleground); delay(5000)
+        tap(tCapsuleArena); delay(8000)
+
+        // 지난 등록분 전투가 끝날 때까지. 결과창의 확인은 빨강이다.
+        var round = 0
+        while (round < 30 && abortReason == null && !LoopStatus.stopRequested) {
+            val f = frame() ?: break
+            Judge.redConfirmButton(f)?.let { tap(it); delay(4000) }
+            val g = frame() ?: break
+            // FIGHT! 카드가 보이면 등록할 수 있는 상태다
+            if (Judge.isGameTopBarVisible(g)) break
+            if (round > 2) { tap(tArenaFight); delay(4000) }
+            // 골드카드 구매 확인 (다이아 3개)
+            if (tapConfirm("골드카드")) {
+                onLog("  캡슐 전장 등록 (다이아 3개)")
+                mp.markDone(MissionPrefs.CAPSULE_ARENA)
+                delay(4000)
+                break
+            }
+            round++
+            delay(3000)
+        }
+        tap(tWindowX); delay(3000)
+        tap(tWindowX); delay(3000)
+    }
+
+    /**
+     * 도전의 전장. 붉은 칼인 상대만 칠 수 있다 — 회색은 이미 이긴 상대다.
+     *
+     * 첫 회만 용 넷을 고르면 되고 그 뒤로는 덱이 기억된다.
+     */
+    private suspend fun challengeArena(mp: MissionPrefs) {
+        var done = mp.count(MissionPrefs.CHALLENGE)
+        if (done >= MissionPrefs.CHALLENGE_MAX) { onLog("  도전의 전장 — 오늘 다 함"); return }
+        if (!goToVillage()) return
+        tap(tBattleground); delay(5000)
+        tap(tChallengeArena); delay(8000)
+
+        while (done < MissionPrefs.CHALLENGE_MAX && abortReason == null &&
+            !LoopStatus.stopRequested
+        ) {
+            var f = frame() ?: break
+            var targets = Judge.arenaRedSwords(f)
+            if (targets.isEmpty()) {
+                // 아래에 더 있을 수 있다
+                a11y?.swipe(1500, 800, 1500, 400); delay(3000)
+                f = frame() ?: break
+                targets = Judge.arenaRedSwords(f)
+            }
+            if (targets.isEmpty()) { onLog("  도전의 전장 — 칠 상대가 없다"); break }
+
+            tap(1914 to targets.first()); delay(5000)
+            // 덱이 없으면 앞 넷을 고른다. 있으면 선택완료만 뜬다.
+            tPartyCards.forEach { tap(it); delay(1200) }
+            tap(tPartyDone); delay(6000)
+            tap(tSkip); delay(4000)
+
+            val r = frame()?.let { Judge.redConfirmButton(it) }
+            if (r != null) { tap(r); delay(4000) }
+            mp.bump(MissionPrefs.CHALLENGE)
+            done = mp.count(MissionPrefs.CHALLENGE)
+            onLog("  도전의 전장 $done/${MissionPrefs.CHALLENGE_MAX}")
+            publish("mission")
+        }
+        tap(tWindowX); delay(3000)
+        tap(tWindowX); delay(3000)
+    }
+
+    /**
+     * 콜로세움 GENERAL 토너먼트 참가. 티켓 1개가 든다.
+     * 참가만 하면 미션이 인정되므로 결과는 보지 않고 나온다.
+     */
+    private suspend fun tournament(mp: MissionPrefs) {
+        if (mp.done(MissionPrefs.TOURNAMENT)) { onLog("  토너먼트 — 오늘 이미 참가"); return }
+        if (!goToVillage()) return
+        tap(tColosseum); delay(7000)
+        tap(tTournament); delay(6000)
+        tap(tGeneral); delay(5000)
+
+        if (tapConfirm("토너먼트 참가")) {
+            onLog("  토너먼트 참가 (티켓 1개)")
+            mp.markDone(MissionPrefs.TOURNAMENT)
+        } else {
+            onLog("  ! 토너먼트 참가 창이 안 떴다")
+        }
+        delay(4000)
+        tap(tWindowX); delay(3000)
+        tap(tWindowX); delay(3000)
     }
 
     /**
