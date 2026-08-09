@@ -422,24 +422,40 @@ class LoopEngine(
         tap(tBattleground); delay(5000)
         tap(tCapsuleArena); delay(8000)
 
-        // 지난 등록분 전투가 끝날 때까지. 결과창의 확인은 빨강이다.
+        // 흐름이 세 가지뿐이다. 무엇을 보고 무엇을 했는지 매번 남긴다 —
+        // 지난번에는 아무 로그도 없이 조용히 빠져나가 실패한 줄도 몰랐다.
+        //   전투 결과창(빨간 확인)  → 넘긴다
+        //   골드카드 창(파란 확인)   → 누르면 등록 완료 (다이아 3개)
+        //   그 밖                  → FIGHT! 을 눌러 등록을 시도한다
         var round = 0
-        while (round < 30 && abortReason == null && !LoopStatus.stopRequested) {
-            val f = frame() ?: break
-            Judge.redConfirmButton(f)?.let { tap(it); delay(4000) }
-            val g = frame() ?: break
-            // FIGHT! 카드가 보이면 등록할 수 있는 상태다
-            if (Judge.isGameTopBarVisible(g)) break
-            if (round > 2) { tap(tArenaFight); delay(4000) }
-            // 골드카드 구매 확인 (다이아 3개)
-            if (tapConfirm("골드카드")) {
-                onLog("  캡슐 전장 등록 (다이아 3개)")
-                mp.markDone(MissionPrefs.CAPSULE_ARENA)
-                delay(4000)
+        var registered = false
+        while (round < 40 && abortReason == null && !LoopStatus.stopRequested) {
+            round++
+            val f = frame() ?: run { onLog("  ! 캡슐 전장 화면을 읽지 못했다"); return }
+
+            val red = Judge.redConfirmButton(f)
+            if (red != null) {
+                onLog("    이전 전투 결과 확인 (${red.first},${red.second})")
+                tap(red); delay(3000)
+                continue
+            }
+            val blue = Judge.confirmButton(f)
+            if (blue != null) {
+                onLog("    골드카드 확인 (${blue.first},${blue.second}) — 다이아 3개")
+                tap(blue); delay(4000)
+                registered = true
                 break
             }
-            round++
-            delay(3000)
+            if (round % 4 == 1) onLog("    캡슐 전장 대기 ($round/40)")
+            tap(tArenaFight); delay(3000)
+        }
+
+        if (registered) {
+            mp.markDone(MissionPrefs.CAPSULE_ARENA)
+            onLog("  캡슐 전장 등록 완료")
+        } else {
+            onLog("  ! 캡슐 전장 등록을 못 했다 ($round 번 시도)")
+            dumpFrame("capsule")
         }
         tap(tWindowX); delay(3000)
         tap(tWindowX); delay(3000)
@@ -560,15 +576,39 @@ class LoopEngine(
         }
     }
 
-    /** 퀘스트 창의 '모두받기'. 끝난 퀘스트의 보상을 한 번에 받는다. */
+    /**
+     * 퀘스트 창의 '모두받기'. 끝난 퀘스트의 보상을 한 번에 받는다.
+     *
+     * 보상창이 여러 번 이어질 수 있고, 뜨는 데 시간이 걸린다.
+     * 지난번에는 곧바로 확인을 찾다가 '확인 0 회' 로 아무것도 못 받았다.
+     */
     private suspend fun claimQuests(mp: MissionPrefs) {
         if (!openMenuItem(tMenuQuest, "퀘스트")) return
-        tap(tQuestClaimAll); delay(3000)
-        // 받을 게 있으면 보상창이 뜬다. 없으면 아무 일도 없다.
+
+        onLog("    모두받기 (${tQuestClaimAll.first},${tQuestClaimAll.second})")
+        tap(tQuestClaimAll); delay(4000)
+
         var closed = 0
-        repeat(3) { if (tapConfirm("퀘스트 보상")) { closed++; delay(2000) } }
-        onLog("  퀘스트 모두받기 — 확인 $closed 회")
-        mp.markDone(MissionPrefs.QUEST_CLAIM)
+        repeat(6) {
+            // 보상창이 늦게 뜨는 일이 있어 잠깐 기다렸다 본다
+            var at: Pair<Int, Int>? = null
+            repeat(4) {
+                at = frame()?.let { f -> Judge.confirmButton(f) }
+                if (at != null) return@repeat
+                delay(900)
+            }
+            val p = at ?: return@repeat
+            onLog("    퀘스트 보상 확인 (${p.first},${p.second})")
+            tap(p); delay(2200)
+            closed++
+        }
+        if (closed > 0) {
+            mp.markDone(MissionPrefs.QUEST_CLAIM)
+            onLog("  퀘스트 모두받기 — 보상 $closed 건")
+        } else {
+            onLog("  퀘스트 모두받기 — 받을 보상이 없었다")
+            dumpFrame("claim")
+        }
         tap(tWindowX); delay(2500)
     }
 
