@@ -42,12 +42,27 @@ class MissionPrefs(ctx: Context) {
 
     private fun key(task: String) = "done_$task"
 
+    /** 오늘 몇 번 했는지 세는 것. 탐험 10회 · 무료 보상 3회처럼 횟수가 있는 미션에 쓴다. */
+    fun count(task: String): Int =
+        if (p.getInt("cnt_date_$task", 0) == today()) p.getInt("cnt_$task", 0) else 0
+
+    fun bump(task: String) {
+        val n = count(task) + 1
+        p.edit().putInt("cnt_date_$task", today()).putInt("cnt_$task", n).apply()
+    }
+
     companion object {
         const val GIFT_SEND = "gift_send"
         const val GIFT_RECV = "gift_recv"
         const val ATTENDANCE = "attendance"
         const val TREASURE = "treasure"
         const val QUEST_CLAIM = "quest_claim"
+        const val FREE_REWARD = "free_reward"
+        const val EXPLORE10 = "explore10"
+
+        /** 무료 보상은 하루 세 번, 탐험 미션은 열 번이다. */
+        const val FREE_REWARD_MAX = 3
+        const val EXPLORE_MAX = 10
 
         /** 정기 속성 이름. 화면의 육각형 순서와 같다. */
         val GIFT_NAMES = arrayOf("땅", "물", "불", "풀", "빛", "어둠")

@@ -243,6 +243,10 @@ class LoopEngine(
     private val tMenuFriend = 1963 to 400
     private val tMenuAttend = 1830 to 400
     private val tMenuQuest = 1712 to 281
+    /** 메뉴 마지막 줄의 FREE. 하루 세 번 무료 보상을 준다. */
+    private val tMenuFree = 1828 to 679
+    /** 퀘스트 창의 '모두받기'. */
+    private val tQuestClaimAll = 1740 to 955
     /**
      * 월드맵 하늘 왕국 옆 보물상자. 실측 중심 (1188,262).
      * 처음에 (1200,250) 으로 눌렀다가 빗나가 '아직 시간이 안 됐다' 로 넘어갔다.
@@ -269,6 +273,9 @@ class LoopEngine(
         friendGifts(mp)
         attendance(mp)
         treasureBox(mp)
+        freeRewards(mp)
+        missionExplore(mp)
+        claimQuests(mp)
 
         onLog("미션 루프 끝")
         LoopStatus.update(LoopStatus.current.copy(running = false, phase = "done"))
@@ -372,6 +379,69 @@ class LoopEngine(
         } else {
             onLog("  보물상자 — 받을 것이 없다")
         }
+    }
+
+    /**
+     * 메뉴의 FREE — 무료 보상. 하루 세 번이다.
+     *
+     * '받으시겠습니까' 창의 확인을 누르면 보상창이 뜨고, 그 확인을 또 눌러야 한다.
+     * 확인 두 번이 한 세트다. 세 번 다 받으면 '무료 보상 헌터' 가 끝난다.
+     */
+    private suspend fun freeRewards(mp: MissionPrefs) {
+        var got = mp.count(MissionPrefs.FREE_REWARD)
+        if (got >= MissionPrefs.FREE_REWARD_MAX) {
+            onLog("  무료 보상 — 오늘 세 번 다 받음"); return
+        }
+        while (got < MissionPrefs.FREE_REWARD_MAX && abortReason == null) {
+            if (!openMenuItem(tMenuFree, "FREE")) return
+            if (!tapConfirm("무료 보상 수령")) {
+                onLog("  무료 보상 — 더 받을 것이 없다"); return
+            }
+            delay(3000)
+            tapConfirm("무료 보상 결과")
+            mp.bump(MissionPrefs.FREE_REWARD)
+            got = mp.count(MissionPrefs.FREE_REWARD)
+            onLog("  무료 보상 $got/${MissionPrefs.FREE_REWARD_MAX}")
+        }
+    }
+
+    /**
+     * 미션용 탐험 10회.
+     *
+     * 반드시 일반 각성 45렙으로 돈다. 키우는 중인 용으로 돌리면 원치 않는 경험치가
+     * 들어가 등급이 흔들린다. 지역은 가장 짧은 희망의 숲이다 — 목적이 횟수 채우기다.
+     */
+    private suspend fun missionExplore(mp: MissionPrefs) {
+        var done = mp.count(MissionPrefs.EXPLORE10)
+        if (done >= MissionPrefs.EXPLORE_MAX) {
+            onLog("  탐험 미션 — 오늘 열 번 다 함"); return
+        }
+        if (!pickMissionDragon()) return
+        if (!leaveCave()) return
+
+        val zone = ExploreMap.zones.first()      // 희망의 숲
+        while (done < MissionPrefs.EXPLORE_MAX && abortReason == null &&
+            !LoopStatus.stopRequested
+        ) {
+            if (!openZoneDialog(zone)) return
+            if (runOneExploration() == null) return
+            mp.bump(MissionPrefs.EXPLORE10)
+            done = mp.count(MissionPrefs.EXPLORE10)
+            onLog("  탐험 $done/${MissionPrefs.EXPLORE_MAX}")
+            publish("mission")
+        }
+    }
+
+    /** 퀘스트 창의 '모두받기'. 끝난 퀘스트의 보상을 한 번에 받는다. */
+    private suspend fun claimQuests(mp: MissionPrefs) {
+        if (!openMenuItem(tMenuQuest, "퀘스트")) return
+        tap(tQuestClaimAll); delay(3000)
+        // 받을 게 있으면 보상창이 뜬다. 없으면 아무 일도 없다.
+        var closed = 0
+        repeat(3) { if (tapConfirm("퀘스트 보상")) { closed++; delay(2000) } }
+        onLog("  퀘스트 모두받기 — 확인 $closed 회")
+        mp.markDone(MissionPrefs.QUEST_CLAIM)
+        tap(tWindowX); delay(2500)
     }
 
     /**
