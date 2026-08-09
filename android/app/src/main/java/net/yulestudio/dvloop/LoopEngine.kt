@@ -1462,6 +1462,15 @@ class LoopEngine(
             // 여기서는 '덮여 있다' 를 이미 확인했으므로 창 닫기 X 를 눌러도
             // 월드맵의 N 배지를 잘못 누를 일이 없다.
             if (f != null && !Judge.isGameTopBarVisible(f)) {
+                // 표준 X 로 안 닫히는 창이 있다. '데이터를 저장했습니다' 처럼
+                // 확인 버튼만 있는 창은 X 를 여덟 번 눌러도 그대로 남는다.
+                // 확인이 보이면 그것부터 누른다.
+                val ok = Judge.confirmButton(f)
+                if (ok != null) {
+                    onLog("    확인 창 닫기 (${ok.first},${ok.second})")
+                    tap(ok); delay(2500)
+                    continue
+                }
                 onLog("    큰 창이 덮고 있다 — 창 닫기")
                 tap(tWindowX); delay(3500)
                 continue
@@ -1495,7 +1504,23 @@ class LoopEngine(
         if (!ok) { abort("설정창 검증 3회 실패"); return false }
 
         tap(tSaveSafe); delay(3000)
-        tap(tSaveOk); delay(2000)
+
+        // '데이터를 저장했습니다' 확인창은 늦게 뜬다. 좌표를 박아 한 번 누르면
+        // 뜨기 전에 헛치고, 그 뒤에 뜬 창이 화면을 덮은 채 남는다.
+        // 실제로 그 창이 남아 '큰 창이 덮고 있다' 를 여덟 번 반복하다 멈췄다.
+        var closed = false
+        repeat(8) {
+            val at = frame()?.let { Judge.confirmButton(it) }
+            if (at != null) {
+                onLog("    저장 확인 (${at.first},${at.second})")
+                tap(at); delay(2000)
+                closed = true
+                return@repeat
+            }
+            delay(1000)
+        }
+        if (!closed) onLog("    ! 저장 확인창을 찾지 못했다 — 그대로 진행")
+
         tap(tSetX); delay(2000)
         tap(tMenu); delay(2000)
         onLog("  저장 완료")
