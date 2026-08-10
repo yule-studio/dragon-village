@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +31,33 @@ class LoopService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var job: Job? = null
+
+    /**
+     * 루프가 도는 동안 화면을 켜 둔다.
+     *
+     * 접근성 서비스가 보내는 탭은 시스템이 '사용자 조작' 으로 치지 않아서
+     * 절전 타이머가 계속 돌아간다. 미니창의 FLAG_KEEP_SCREEN_ON 만으로는
+     * 미니창이 잠깐이라도 내려간 사이에 화면이 꺼진다 — 콜로세움처럼
+     * 몇 분씩 기다리는 구간에서 실제로 그렇게 잠겼다.
+     * 화면이 꺼지면 잠금 화면이 오버레이를 가리고 캡처도 무의미해진다.
+     */
+    private var wake: PowerManager.WakeLock? = null
+
+    @Suppress("DEPRECATION")
+    private fun holdScreen() {
+        if (wake?.isHeld == true) return
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wake = pm.newWakeLock(
+            PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+            "dvloop:screen",
+        ).apply { setReferenceCounted(false); acquire() }
+        log("화면 켜 둠 (루프가 도는 동안)")
+    }
+
+    private fun releaseScreen() {
+        runCatching { if (wake?.isHeld == true) wake?.release() }
+        wake = null
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -59,6 +87,7 @@ class LoopService : Service() {
         }
 
         val firstSetup: LoopSetup = setup
+        holdScreen()
         job?.cancel()
         job = scope.launch {
             // 한 마리를 끝내면 대기열의 다음 드래곤으로 잇는다.
@@ -95,6 +124,7 @@ class LoopService : Service() {
                 )
                 FloatingService.refresh(applicationContext)
             }
+            releaseScreen()
             ScreenCapture.stop()
             // phase 를 남겨두면 멈춘 뒤에도 '데삭 중' 처럼 보인다.
             LoopStatus.update(LoopStatus.current.copy(running = false, phase = "idle"))
@@ -174,6 +204,7 @@ class LoopService : Service() {
 
     /** 루프 · 화면 공유 · 미니창을 한꺼번에 내린다. 어디서 멈추든 같은 길을 쓴다. */
     private fun stopEverything() {
+        releaseScreen()
         LoopStatus.requestStop()
         job?.cancel()
         ScreenCapture.stop()
