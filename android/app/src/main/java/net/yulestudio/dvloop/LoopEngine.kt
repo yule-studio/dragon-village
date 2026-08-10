@@ -284,20 +284,37 @@ class LoopEngine(
         claimQuests(mp)
 
         onLog("미션 루프 끝")
+        // 미션은 목표 레벨이 없다. 끝까지 걸어온 것 자체가 완료다.
+        // 이걸 세워야 서비스가 완료 알림을 울린다.
+        reachedTarget = abortReason == null
         LoopStatus.update(LoopStatus.current.copy(running = false, phase = "done"))
         FloatingService.refresh(ctx)
     }
 
-    /** 메뉴를 열고 항목 하나를 누른다. 메뉴가 안 열리면 false. */
+    /**
+     * 메뉴를 열고 항목 하나를 누른다. 메뉴가 안 열리면 false.
+     *
+     * 예전엔 상단 아이콘 줄이 보이는지로 확인했는데, 그건 메뉴와 상관없이
+     * 지도에서 늘 보인다. 즉 확인이 아니었다. 메뉴가 안 열린 채 항목 좌표를
+     * 누르면 그 탭이 지도로 떨어지고, 엉뚱한 지역으로 들어가거나 아무 일도
+     * 안 일어난다. 출석체크 · 보물상자 · 전장이 줄줄이 실패한 게 전부 이것 때문이었다.
+     *
+     * 메뉴 버튼은 토글이라 한 번 더 누르면 닫힌다. 그리고 용 패널이 열려 있으면
+     * 첫 탭이 패널 닫기에 먹힌다. 그래서 열렸는지 보고 안 열렸을 때만 다시 누른다.
+     */
     private suspend fun openMenuItem(at: Pair<Int, Int>, name: String): Boolean {
         if (!goToWorldMap()) return false
-        tap(tMenu); delay(3000)
-        val f = frame()
-        if (f == null || !Judge.isGameTopBarVisible(f)) {
-            onLog("  ! 메뉴를 열지 못했다 ($name)"); return false
+        for (attempt in 1..3) {
+            if (frame()?.let { Judge.isMenuOpen(it) } == true) {
+                tap(at); delay(5000)
+                return true
+            }
+            onLog("  메뉴 여는 중 ($attempt/3)")
+            tap(tMenu); delay(2500)
         }
-        tap(at); delay(5000)
-        return true
+        onLog("  ! 메뉴를 열지 못했다 ($name)")
+        dumpFrame("menu-$name")
+        return false
     }
 
     /**
