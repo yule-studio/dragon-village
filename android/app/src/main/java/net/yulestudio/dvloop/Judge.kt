@@ -735,6 +735,26 @@ object Judge {
     }
 
     /**
+     * 도전의 전장 ATTACK PARTY 편성 화면인가.
+     *
+     * 붉은 칼을 누르면 이 화면이 뜬다. 여기가 아닌데 카드 좌표를 누르면
+     * 그 탭이 대전목록으로 떨어져 엉뚱한 상대가 열린다. 누르기 전에 확인한다.
+     *
+     * 좌상단 붉은 `ATTACK PARTY` 배너와, 카드 이름줄의 주황 리본을 함께 본다.
+     * 실측 — 편성 화면 리본 45~46, 다른 화면 11종은 최대 13 이고 배너도 없다.
+     */
+    fun isAttackParty(bmp: Bitmap): Boolean {
+        val b = px(bmp, 300, 74)
+        if (!(r(b) > 140 && g(b) < 80 && b(b) < 80)) return false
+        var ribbon = 0
+        for (x in 380..1999 step 20) {
+            val c = px(bmp, x, 302)
+            if (r(c) > 200 && g(c) in 121..214 && b(c) < 110) ribbon++
+        }
+        return ribbon >= 25
+    }
+
+    /**
      * 게임 메뉴가 열려 있는가.
      *
      * 메뉴를 눌렀는지 확인하지 않고 항목 좌표를 누르면, 메뉴가 안 열렸을 때

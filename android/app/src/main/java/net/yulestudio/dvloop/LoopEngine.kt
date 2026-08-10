@@ -415,7 +415,6 @@ class LoopEngine(
     private val tTournament = 1385 to 480        // 콜로세움 → TOURNAMENT
     private val tGeneral = 705 to 480            // 토너먼트 → GENERAL
     private val tArenaFight = 620 to 500         // CAPSULE ARENA 의 FIGHT! (실측 600,480)
-    private val tPartyDone = 465 to 205          // ATTACK PARTY 의 선택완료
     private val tSkip = 1167 to 193              // 전투 SKIP (실측)
     private val tPartyCards = listOf(505 to 450, 1010 to 450, 1490 to 450, 1970 to 450)
 
@@ -484,7 +483,10 @@ class LoopEngine(
     /**
      * 도전의 전장. 붉은 칼인 상대만 칠 수 있다 — 회색은 이미 이긴 상대다.
      *
-     * 첫 회만 용 넷을 고르면 되고 그 뒤로는 덱이 기억된다.
+     * 붉은 칼을 누르면 ATTACK PARTY 편성 화면이 뜬다. 넷을 골라야 싸울 수 있다.
+     *
+     * **결과창을 본 것만 한 번으로 센다.** 예전에는 누르고 나서 무조건 세어,
+     * 실제로는 안 싸웠는데 10/10 이 되어 있었다.
      */
     private suspend fun challengeArena(mp: MissionPrefs) {
         var done = mp.count(MissionPrefs.CHALLENGE)
@@ -507,13 +509,37 @@ class LoopEngine(
             if (targets.isEmpty()) { onLog("  도전의 전장 — 칠 상대가 없다"); break }
 
             tap(1914 to targets.first()); delay(5000)
-            // 덱이 없으면 앞 넷을 고른다. 있으면 선택완료만 뜬다.
+
+            // 편성 화면인지 보고 나서 카드를 누른다. 아니면 이 탭들이 전부
+            // 대전목록으로 떨어져 엉뚱한 상대가 열린다.
+            if (!waitFor(8000) { Judge.isAttackParty(it) }) {
+                onLog("  ! 편성 화면이 안 떴다 — 아무것도 누르지 않는다")
+                dumpFrame("arena-party")
+                break
+            }
             tPartyCards.forEach { tap(it); delay(1200) }
-            tap(tPartyDone); delay(6000)
+
+            // 선택완료 좌표는 재본 적이 없다. 추측한 자리를 누르면 편성 화면의
+            // 붉은 배너를 누르게 된다. 화면에서 버튼을 찾고, 못 찾으면 멈춘다.
+            val doneBtn = frame()?.let { Judge.confirmButton(it) ?: Judge.redConfirmButton(it) }
+            if (doneBtn == null) {
+                onLog("  ! 선택완료 버튼을 못 찾았다 — 화면을 남기고 멈춘다")
+                dumpFrame("arena-done")
+                break
+            }
+            onLog("    선택완료 (${doneBtn.first},${doneBtn.second})")
+            tap(doneBtn); delay(6000)
             tap(tSkip); delay(4000)
 
+            // 결과창을 본 것만 한 번으로 센다. 예전에는 누르고 나서 무조건 세어,
+            // 실제로는 안 싸웠는데 10/10 이 되어 있었다.
             val r = frame()?.let { Judge.redConfirmButton(it) }
-            if (r != null) { tap(r); delay(4000) }
+            if (r == null) {
+                onLog("  ! 결과창이 안 떴다 — 세지 않고 멈춘다")
+                dumpFrame("arena-result")
+                break
+            }
+            tap(r); delay(4000)
             mp.bump(MissionPrefs.CHALLENGE)
             done = mp.count(MissionPrefs.CHALLENGE)
             onLog("  도전의 전장 $done/${MissionPrefs.CHALLENGE_MAX}")
