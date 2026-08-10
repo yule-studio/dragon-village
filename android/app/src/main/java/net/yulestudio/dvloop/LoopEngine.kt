@@ -1356,6 +1356,16 @@ class LoopEngine(
                 return@repeat
             }
             val f = frame() ?: return
+            // 선택을 묻는 창이 앞을 막고 있으면 취소로 물러난다.
+            // 확인을 누르면 재화를 쓰거나 원치 않는 것을 확정할 수 있다.
+            // 배고픔·레벨업처럼 눌러야 하는 창은 아래에서 따로 다룬다.
+            if (!Judge.isHungerPopup(f) && !Judge.isLevelUpScreen(f)) {
+                Judge.cancelButton(f)?.let { c ->
+                    onLog("    선택창 취소 (${c.first},${c.second})")
+                    tap(c); delay(2500)
+                    return@repeat
+                }
+            }
             // 배고픔 창은 지도에서도 뜬다. 확인을 눌러 음식을 먹인다.
             if (Judge.isHungerPopup(f)) {
                 onLog("    배고픔 — 음식을 먹인다"); tap(Judge.hungerOk); delay(3500)

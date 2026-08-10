@@ -275,6 +275,28 @@ object Judge {
     }
 
     /**
+     * 확인 옆의 '취소'. 없으면 null.
+     *
+     * 선택을 묻는 창이 앞을 막고 있을 때 쓴다. 확인을 누르면 재화를 쓰거나
+     * 원치 않는 것을 확정할 수 있으니, 그저 비켜야 할 때는 취소로 물러난다.
+     * 실제로 무료 보상 창이 남아 동굴에 못 들어가고 일곱 번을 헛돌았다.
+     *
+     * 취소는 확인과 같은 줄, 오른쪽에 있는 따뜻한 회색 덩이다.
+     * 실측 — 확인 (978,741) 파랑, 취소 (1364,741) (123,117,107).
+     */
+    fun cancelButton(bmp: Bitmap): Pair<Int, Int>? {
+        val ok = confirmButton(bmp) ?: return null
+        val box = Locate.blob(
+            bmp, ok.first + 120, ok.second - 60, 1700, ok.second + 60,
+            step = 6, minCells = 30,
+        ) { r, g, b ->
+            r in 95..175 && r - b in 0..45 && b <= g && g <= r
+        } ?: return null
+        if (box.w < 120 || box.h < 25 || box.h > 140) return null
+        return box.cx to box.cy
+    }
+
+    /**
      * 친구 창의 도구줄 — '전부 보내기' 와 '받기' 의 가로 위치. 아니면 null.
      *
      * 갈색 바 위의 흰 글자를 찾는다. 글자는 획 단위로 끊기므로 가까운 것끼리 묶는다.
