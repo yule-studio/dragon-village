@@ -999,66 +999,137 @@ class LoopEngine(
     }
 
     /**
-     * 미션용 탐험 대상을 고른다 — **일반 각성 45렙**.
+     * 동굴에서 대상을 고른다. **모든 루프가 이 하나를 쓴다.**
      *
-     * 미션의 '성실한 탐험가' 는 탐험 10회다. 키우는 중인 용으로 돌리면 원치 않는
-     * 경험치가 들어가 등급이 흔들린다. 더 오를 데가 없는 45렙으로만 돌려야 한다.
-     * 각성으로 맞추는 것은 캡슐 전장 미션까지 같은 용으로 쓰기 위해서다.
+     * 전에는 레벨업·탐험용과 미션용이 따로 있었다. 같은 일을 두 벌로 만들어 두니
+     * 한쪽을 고쳐도 다른 쪽은 그대로였다. 실제로 '검색이 안 된다' 는 문제가
+     * 레벨업 루프에서 한 번, 미션 루프에서 또 한 번 났다.
      *
-     * 진각성은 제외한다. 겉모습으로는 일반 각성과 구분되지 않고, 칸 아래 마크가
-     * 빨간 육각형인지 보라 원형인지로만 갈린다.
+     * @param name    이름으로 검색할 때. null 이면 검색하지 않고 필터 결과에서 고른다
+     * @param stage   단계 필터. null 이면 단계는 건드리지 않는다
+     * @param level45 레벨 45 필터를 걸지
+     * @param skipTrueAwakened 진각성(빨간 마크)을 건너뛸지
      */
-    private suspend fun pickMissionDragon(): Boolean {
-        if (!ensureCaveGrid()) return false
-        if (!openFilterPanel()) { abort("필터창을 열지 못했다"); return false }
+    private suspend fun selectDragonInCave(
+        name: String?,
+        stage: Stage?,
+        level45: Boolean = false,
+        skipTrueAwakened: Boolean = false,
+    ): Boolean {
+        for (attempt in 1..3) {
+            if (!ensureCaveGrid()) return false
 
-        val f0 = frame() ?: run { abort("필터창을 읽지 못했다"); return false }
-        // 단계는 각성 하나만, 레벨은 45 하나만 켠다. 버튼은 토글이라 상태를 먼저 본다.
-        if (stageButtons.any { (s, p) ->
-                s != Stage.AWAKENED && Judge.isFilterButtonOn(f0, p.first, p.second)
+            if (!applyFilters(stage, level45)) {
+                onLog("    필터 실패 ($attempt/3) — 되돌리고 재시도")
+                tap(tCaveX); delay(3000)
+                continue
             }
-        ) { tap(tStageAll); delay(2000) }
-        if (frame()?.let { Judge.isFilterButtonOn(it, 1191, 228) } != true) {
-            tap(stageButton(Stage.AWAKENED)); delay(2000)
-        }
 
-        val f1 = frame() ?: run { abort("필터창을 읽지 못했다"); return false }
-        if (levelButtons.any { it != tLevel45 && Judge.isFilterButtonOn(f1, it.first, it.second) }) {
-            tap(tLevelAll); delay(2000)
-        }
-        if (frame()?.let { Judge.isFilterButtonOn(it, tLevel45.first, tLevel45.second) } != true) {
-            tap(tLevel45); delay(2000)
-        }
-
-        val f2 = frame() ?: run { abort("필터창을 읽지 못했다"); return false }
-        val stageOk = Judge.isFilterButtonOn(f2, 1191, 228)
-        val levelOk = Judge.isFilterButtonOn(f2, tLevel45.first, tLevel45.second)
-        if (!stageOk || !levelOk) {
-            abort("각성·45 필터를 맞추지 못했다 (각성=$stageOk 45=$levelOk)"); return false
-        }
-        onLog("    필터: 각성 + 레벨 45")
-        if (!closeFilterPanel()) { abort("필터창을 닫지 못했다"); return false }
-
-        val g = frame() ?: run { abort("목록을 읽지 못했다"); return false }
-        for (i in 0 until 5) {
-            val cx = Judge.gridCellX(i)
-            when (Judge.isTrueAwakened(g, cx)) {
-                false -> {
-                    onLog("    ${i + 1}번 칸 선택 (일반 각성)")
-                    tap(cx to Judge.GRID_CELL_Y); delay(3000)
-                    tap(tGridClose); delay(3000)
-                    return true
+            // 이름이 있으면 검색으로 좁힌다. 같은 이름이 단계별로 여러 마리라
+            // 필터와 검색을 함께 써야 정확히 한 마리가 남는다.
+            if (name != null) {
+                tap(tSearch); delay(2500)
+                if (!typeText(name)) {
+                    onLog("    검색 진입 실패 ($attempt/3) — 되돌리고 재시도")
+                    tap(tCaveX); delay(3000)
+                    continue
                 }
-                true -> onLog("    ${i + 1}번 칸은 진각성 — 건너뜀")
-                null -> {
-                    abort("일반 각성 45렙을 찾지 못했다 (${i + 1}번 칸까지 확인)")
-                    return false
-                }
+                delay(1500)
+                // 입력이 됐을 때만 키보드를 내린다.
+                // 키보드가 안 떠 있으면 이 뒤로가기가 게임 종료창을 띄운다.
+                a11y?.back(); delay(2500)
             }
+
+            val g = frame() ?: run { abort("목록을 읽지 못했다"); return false }
+            val cell = pickCell(g, skipTrueAwakened)
+            if (cell == null) {
+                onLog("    고를 칸이 없다 ($attempt/3)")
+                tap(tCaveX); delay(3000)
+                continue
+            }
+            tap(cell to Judge.GRID_CELL_Y); delay(3000)
+            tap(tGridClose); delay(3000)
+            return true
         }
-        abort("앞 다섯 칸이 모두 진각성이다")
+        abort("동굴에서 대상을 고르지 못했다")
         return false
     }
+
+    /** 목록에서 고를 칸의 가로 위치. 진각성을 걸러야 하면 건너뛴다. */
+    private fun pickCell(f: Bitmap, skipTrueAwakened: Boolean): Int? {
+        if (!skipTrueAwakened) return Judge.gridCellX(0)
+        for (i in 0 until 5) {
+            val cx = Judge.gridCellX(i)
+            when (Judge.isTrueAwakened(f, cx)) {
+                false -> { onLog("    ${i + 1}번 칸 선택 (일반 각성)"); return cx }
+                true -> onLog("    ${i + 1}번 칸은 진각성 — 건너뜀")
+                null -> return null      // 빈 칸이면 그 뒤도 비어 있다
+            }
+        }
+        return null
+    }
+
+    /** 단계·레벨 필터를 설정값 하나로만 맞춘다. 버튼이 토글이라 상태를 먼저 읽는다. */
+    private suspend fun applyFilters(stage: Stage?, level45: Boolean): Boolean {
+        if (stage == null && !level45) return true
+        if (!openFilterPanel()) return false
+
+        if (stage != null) {
+            val f = frame() ?: return false
+            if (stageButtons.any { (s, p) ->
+                    s != stage && Judge.isFilterButtonOn(f, p.first, p.second)
+                }
+            ) { tap(tStageAll); delay(2000) }
+            val want = stageButton(stage)
+            if (frame()?.let { Judge.isFilterButtonOn(it, want.first, want.second) } != true) {
+                tap(want); delay(2000)
+            }
+        }
+
+        if (level45) {
+            val f = frame() ?: return false
+            if (levelButtons.any {
+                    it != tLevel45 && Judge.isFilterButtonOn(f, it.first, it.second)
+                }
+            ) { tap(tLevelAll); delay(2000) }
+            if (frame()?.let {
+                    Judge.isFilterButtonOn(it, tLevel45.first, tLevel45.second)
+                } != true
+            ) { tap(tLevel45); delay(2000) }
+        }
+
+        val f = frame() ?: return false
+        val stageOk = stage == null ||
+            Judge.isFilterButtonOn(f, stageButton(stage).first, stageButton(stage).second)
+        val levelOk = !level45 ||
+            Judge.isFilterButtonOn(f, tLevel45.first, tLevel45.second)
+        if (!stageOk || !levelOk) {
+            onLog("    필터가 안 맞는다 (단계=$stageOk 레벨=$levelOk)")
+            closeFilterPanel()
+            return false
+        }
+        onLog(
+            "    필터: " + listOfNotNull(stage?.label, if (level45) "레벨 45" else null)
+                .joinToString(" + ")
+        )
+        return closeFilterPanel()
+    }
+
+    /**
+     * 미션용 탐험 대상 — **일반 각성 45렙**.
+     *
+     * 키우는 중인 용으로 돌리면 원치 않는 경험치가 들어가 등급이 흔들린다.
+     * 더 오를 데가 없는 45렙으로만 돌린다. 각성으로 맞추는 것은 캡슐 전장
+     * 미션까지 같은 용을 쓰기 위해서다. 진각성은 겉모습으로 구분되지 않아
+     * 칸 아래 마크로 걸러야 한다.
+     */
+    private suspend fun pickMissionDragon(): Boolean =
+        selectDragonInCave(
+            name = null,
+            stage = Stage.AWAKENED,
+            level45 = true,
+            skipTrueAwakened = true,
+        )
 
     /** 필터창을 연다. 이미 열려 있으면 누르지 않는다 (누르면 닫힌다). */
     private suspend fun openFilterPanel(): Boolean {
@@ -1237,38 +1308,12 @@ class LoopEngine(
         return false
     }
 
-    /** 동굴에서 이름으로 찾아 상세를 연다. 지정·해제가 함께 쓴다. */
-    private suspend fun openDragonDetail(name: String): Boolean {
-        // 검색창에 글자가 들어갔는지를 성공 기준으로 삼아 재시도한다.
-        // (접근성으로 입력하므로 한글이 들어간다 — adb 로는 불가능했다)
-        var typed = false
-        for (attempt in 1..3) {
-            if (!ensureCaveGrid()) return false
-            if (!applyStageFilter()) {
-                onLog("    단계 필터 실패 ($attempt/3) — 되돌리고 재시도")
-                tap(tCaveX); delay(3000)
-                continue
-            }
-            tap(tSearch); delay(2500)
-            if (typeText(name)) { typed = true; break }
-            onLog("    검색 진입 실패 ($attempt/3) — 되돌리고 재시도")
-            tap(tCaveX); delay(3000)   // 어디에 있는지 모르니 동굴을 닫아 월드맵으로
-        }
-        if (!typed) {
-            // 입력이 안 됐는데 진행하면 엉뚱한 용을 고른다.
-            abort("검색어를 입력하지 못했다")
-            return false
-        }
-        delay(1500)
-
-        // 입력이 됐을 때만 키보드를 내린다.
-        // 키보드가 안 떠 있으면 이 뒤로가기가 게임 종료창을 띄운다.
-        a11y?.back(); delay(2500)
-
-        tap(tFirstCell); delay(3000)
-        tap(tGridClose); delay(3000)
-        return true
-    }
+    /**
+     * 동굴에서 이름으로 찾아 상세를 연다. 대상 지정·해제가 함께 쓴다.
+     * 고르는 일 자체는 selectDragonInCave 하나가 맡는다.
+     */
+    private suspend fun openDragonDetail(name: String): Boolean =
+        selectDragonInCave(name = name, stage = setup.stage)
 
     /**
      * 게임이 자리를 잡을 때까지 기다리며 방해물을 걷어낸다.
