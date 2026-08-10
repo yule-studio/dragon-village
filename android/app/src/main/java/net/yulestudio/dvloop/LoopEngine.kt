@@ -361,7 +361,9 @@ class LoopEngine(
             mp.markDone(MissionPrefs.ATTENDANCE)
             onLog("  출석체크 완료")
         } else {
+            // 왜 못 찾았는지는 화면을 봐야 안다. 루프가 지나가면 그 화면은 사라진다.
             onLog("  ! 출석체크 확인 버튼을 찾지 못했다")
+            dumpFrame("attendance")
             tap(tWindowX); delay(2500)
         }
     }
@@ -1196,7 +1198,7 @@ class LoopEngine(
                     onLog("    동굴 그리드 진입")
                     return true
                 }
-                onLog("    동굴 진입 확인 실패 ($round/6) — 되돌린다")
+                onLog("    동굴 진입 확인 실패 ($round/20) — 되돌린다")
                 tap(tWindowX); delay(4000)
             } else if (finishExploration(f)) {
                 // 탐험이나 전투가 진행 중이었다. 그건 창을 닫아서 빠져나올 수 없다.
