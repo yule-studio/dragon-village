@@ -414,9 +414,9 @@ class LoopEngine(
     private val tColosseum = 1237 to 330         // 마을 → 콜로세움
     private val tTournament = 1385 to 480        // 콜로세움 → TOURNAMENT
     private val tGeneral = 705 to 480            // 토너먼트 → GENERAL
-    private val tArenaFight = 620 to 500         // CAPSULE ARENA 의 FIGHT!
+    private val tArenaFight = 620 to 500         // CAPSULE ARENA 의 FIGHT! (실측 600,480)
     private val tPartyDone = 465 to 205          // ATTACK PARTY 의 선택완료
-    private val tSkip = 1170 to 190              // 전투 SKIP (미실측 — 없으면 그냥 지나간다)
+    private val tSkip = 1167 to 193              // 전투 SKIP (실측)
     private val tPartyCards = listOf(505 to 450, 1010 to 450, 1490 to 450, 1970 to 450)
 
     /** 마을까지 간다. 전장·콜로세움이 모두 여기 있다. */
