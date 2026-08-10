@@ -96,17 +96,45 @@ class LoopService : Service() {
             val repo = DexRepository(applicationContext)
             var current: LoopSetup = firstSetup
 
+            // 끝났을 때 무엇을 알릴지. 대기열까지 다 돌고 나서 한 번만 울린다.
+            var reason = Alarm.Reason.STOPPED
+            var detail = "멈췄다"
+            var cleared = 0
+
             while (true) {
                 val engine = LoopEngine(
                     applicationContext, current, Credentials(applicationContext),
                 ) { log(it) }
-                runCatching { engine.run() }
+                val crash = runCatching { engine.run() }
                     .onFailure { log("!! 예외: ${it.message}") }
+                    .exceptionOrNull()
+
+                val who = current.dragon?.name
+                val label = if (who != null) {
+                    "${current.kind.title} · $who Lv.${current.targetLevel}"
+                } else {
+                    current.kind.title
+                }
+                if (engine.reachedTarget) {
+                    cleared++
+                    reason = Alarm.Reason.DONE
+                    detail = "$label 완료"
+                } else {
+                    // abort 는 스스로 정지를 요청한다. 그래서 stopRequested 만 보면
+                    // 사람이 누른 정지와 구분이 안 된다. 중단 사유가 있으면 실패다.
+                    val why = engine.abortReason ?: crash?.message
+                    reason = if (why != null) Alarm.Reason.FAILED else Alarm.Reason.STOPPED
+                    detail = if (why != null) "$label — $why" else "$label 정지"
+                }
 
                 if (!engine.reachedTarget || LoopStatus.stopRequested) break
 
                 val next = prefs.popQueue(repo)
-                if (next == null) { log("대기열이 비었다 — 모두 끝났다"); break }
+                if (next == null) {
+                    log("대기열이 비었다 — 모두 끝났다")
+                    detail = if (cleared > 1) "$cleared 마리 모두 완료" else detail
+                    break
+                }
 
                 log("다음 대상으로 넘어간다: ${next.dragon?.name} ${next.stage?.label} → Lv.${next.targetLevel}")
                 prefs.save(next)
@@ -129,6 +157,8 @@ class LoopService : Service() {
             // phase 를 남겨두면 멈춘 뒤에도 '데삭 중' 처럼 보인다.
             LoopStatus.update(LoopStatus.current.copy(running = false, phase = "idle"))
             FloatingService.refresh(applicationContext)
+            // 밤새 돌려놓고 자거나 폰을 두고 나가면 끝난 걸 알 길이 없다.
+            Alarm.finished(applicationContext, reason, "드빌 루프", detail)
             stopSelf()
         }
         return START_NOT_STICKY
