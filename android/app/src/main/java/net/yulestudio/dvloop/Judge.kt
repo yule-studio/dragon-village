@@ -734,6 +734,78 @@ object Judge {
         return h to white
     }
 
+    /** 레벨업 창에 물려 있는 업 아이템. */
+    enum class UpItem { PREMIUM, SPECIAL, UNKNOWN }
+
+    /**
+     * 레벨업 창의 '사용 아이템' 칸에 지금 무엇이 물려 있는가.
+     *
+     * 확인창에는 아이콘이 없고 제목 글자만 다르다. 그런데 `프리미엄 레벨업` 과
+     * `스페셜 레벨업` 은 글자 폭이 비슷해 흰 점이 530 대 480 밖에 차이가 안 난다.
+     * 10% 차이로 아이템을 가르면 언젠가 엉뚱한 것을 쓴다.
+     *
+     * 아이콘 색은 확실히 갈린다 — 프리미엄은 노란 폭발, 스페셜은 자홍 S.
+     * 실측 — 프리미엄 노랑 617·자홍 0, 스페셜 아이콘 자홍 250.
+     * 그래서 **누르기 전에** 칸의 색으로 확인한다.
+     */
+    fun upItem(bmp: Bitmap): UpItem {
+        var magenta = 0
+        var yellow = 0
+        for (y in 620..829 step 4) {
+            for (x in 1290..1519 step 4) {
+                val c = px(bmp, x, y)
+                if (r(c) > 150 && b(c) > 150 && g(c) < 120) magenta++
+                if (r(c) > 200 && g(c) > 150 && b(c) < 110) yellow++
+            }
+        }
+        return when {
+            magenta >= 80 -> UpItem.SPECIAL
+            yellow >= 200 && magenta < 40 -> UpItem.PREMIUM
+            else -> UpItem.UNKNOWN
+        }
+    }
+
+    /**
+     * '아이템 선택' 창이 열려 있는가. 사용 아이템 칸을 누르면 뜬다.
+     * 프리미엄(왼쪽)·스페셜(오른쪽)이 나란히 놓인다.
+     */
+    fun isItemPicker(bmp: Bitmap): Boolean {
+        var magenta = 0
+        var yellow = 0
+        for (y in 420..649 step 4) {
+            for (x in 1330..1859 step 4) {
+                val c = px(bmp, x, y)
+                if (r(c) > 150 && b(c) > 150 && g(c) < 120) magenta++
+                if (r(c) > 200 && g(c) > 150 && b(c) < 110) yellow++
+            }
+        }
+        // 두 아이콘이 함께 보여야 한다. 레벨업 창 하나만 떠 있을 때와 갈린다.
+        return magenta >= 80 && yellow >= 200
+    }
+
+    /**
+     * 아이템 사용 확인창이 마이너스(`Lv - 1`)인가.
+     *
+     * 제목이 짧아 흰 점이 확 적다.
+     * 실측 — `Lv - 1` 76, `프리미엄 레벨업` 530, `스페셜 레벨업` 480.
+     * 레벨을 올리려다 내리는 사고를 막는 마지막 문이다.
+     */
+    fun isMinusDialog(bmp: Bitmap): Boolean = titleInk(bmp) < 250
+
+    /** 아이템 사용 확인창이 떠 있는가 (제목 글자가 보이는가). */
+    fun isUseDialog(bmp: Bitmap): Boolean = titleInk(bmp) >= 40
+
+    private fun titleInk(bmp: Bitmap): Int {
+        var n = 0
+        for (y in 270..329 step 3) {
+            for (x in 940..1419 step 4) {
+                val c = px(bmp, x, y)
+                if (minOf(r(c), g(c), b(c)) > 190) n++
+            }
+        }
+        return n
+    }
+
     /**
      * 도전의 전장 ATTACK PARTY 편성 화면인가.
      *
@@ -925,6 +997,28 @@ object Judge {
      * 게임을 새로 실행하면 이런 팝업이 뜬다. 월드맵에서는 그 자리가
      * 보라/파랑 계열이라 빨강으로 구분된다.
      */
+    /**
+     * 화면을 덮은 창의 빨간 닫기 X 를 찾는다. 없으면 null.
+     *
+     * 로그인 직후 공지가 여러 개 줄줄이 뜨는데, 창마다 X 자리가 다르다.
+     * 실측 — 공지사항 (1970,57) · 퀘스트 (1910,62) · 전면광고는 X 없이 하단 닫기.
+     * 고정 좌표 하나로는 못 닫는다. 실제로 새 공지창의 X 가 (1970,57) 인데
+     * 코드는 (1873,117) 만 보고 있어, 못 닫은 채 '게임 준비됨' 으로 넘어갔다.
+     *
+     * **상단 아이콘 줄이 보이면 쓰지 않는다.** 월드맵 메뉴 아이콘의 빨간 N 배지가
+     * 자리도 크기도 거의 같아서, 지도에서 부르면 그걸 누른다.
+     * 덮여 있는 것을 먼저 확인했으니 N 배지를 잘못 누를 일이 없다.
+     */
+    fun redCloseButton(bmp: Bitmap): Pair<Int, Int>? {
+        if (isGameTopBarVisible(bmp)) return null
+        val box = Locate.blob(
+            bmp, 1820, 20, 2140, 170, step = 5, minCells = 8,
+        ) { r, g, b -> r > 150 && g < 95 && b < 95 } ?: return null
+        // 육각형 버튼만 인정한다. 동굴 그리드의 가로로 긴 붉은 띠 같은 것을 거른다.
+        if (box.w !in 30..130 || box.h !in 30..130) return null
+        return box.cx to box.cy
+    }
+
     fun hasPopupCloseX(bmp: Bitmap): Boolean {
         // 실측: 빨간 육각형이 x 1840~1906, y 82~154 에 걸쳐 있고 중심은 (1873,117).
         // 가운데는 흰 X 획이라 한 점만 보면 놓친다. 격자로 훑어 몇 점 이상이면 인정한다.

@@ -34,6 +34,13 @@ class LoopEngine(
     private val tItemNormal = 1305 to 486      // 일반 LEVEL UP +1 (같은 자리에 온다)
     private val tLevelUp = 1416 to 930
     private val tItemOk = 997 to 786
+
+    // 프리미엄 레벨업을 쓰는 용(각성이 아닌 용) 전용. 2026-08-13 전부 실측.
+    private val tItemSlotUp = 1399 to 725     // 사용 아이템(업) 칸 → 아이템 선택 창
+    private val tPickPremium = 1454 to 532
+    private val tPickSpecial = 1732 to 532
+    private val tLevelDown = 1806 to 930      // 레벨 다운 (Lv - 1 사용)
+    private val tItemCancel = 1341 to 786
     private val tResultOk = 1170 to 827
     private val tDlgX = 2028 to 56
     private val tMenu = 1977 to 88
@@ -204,6 +211,9 @@ class LoopEngine(
         if (!prepareTarget()) return
         prefs.preparedNo = setup.dragon?.no ?: 0
         if (!openDialog()) return
+        // 무엇이 물려 있는지 모르는 채 시작하지 않는다. 지난 사이클에서
+        // 스페셜을 쓰고 끝났으면 그대로 남아 있다.
+        if (usesPremium && !selectUpItem(Judge.UpItem.PREMIUM)) return
 
         while (cycle < maxCycles && !LoopStatus.stopRequested && abortReason == null) {
             cycle++
@@ -211,6 +221,7 @@ class LoopEngine(
             val win = doCycle() ?: return
 
             if (win) {
+                fails = 0
                 wins++
                 level++
                 onLog("  누적 성공 $wins  (Lv.$level)")
@@ -228,11 +239,8 @@ class LoopEngine(
                     FloatingService.refresh(ctx)
                     return
                 }
-            } else {
-                publish("desak")
-                if (!desak()) return
-                // 즐겨찾기는 서버에 남아 데삭 후에도 유지된다. 대상 지정을 다시 할 필요가 없다.
-                if (!openDialog()) return
+            } else if (!handleFailure()) {
+                return
             }
         }
         LoopStatus.update(LoopStatus.current.copy(running = false, phase = "idle"))
@@ -891,6 +899,102 @@ class LoopEngine(
         return null
     }
 
+    /** 연속 실패 수. 성공하면 0으로 돌아간다. */
+    private var fails = 0
+
+    /** 프리미엄 레벨업을 쓰는 용인가. 각성 용은 각성 Lv+1 을 써서 해당 없다. */
+    private val usesPremium = setup.stage?.awakened != true
+
+    /**
+     * 실패 처리. 계속 돌릴 수 있으면 true.
+     *
+     * 프리미엄을 쓰는 용은 각성 용보다 훨씬 안 뜬다. 그래서 실패가 쌓이면
+     * 방법을 바꾼다 — **10회마다 마이너스로 한 칸 내렸다가 다시 올리고,
+     * 30회마다 스페셜을 쓴다.** 그 외에는 늘 하던 대로 데삭으로 되돌린다.
+     *
+     * 30회는 10의 배수이기도 하다. 겹칠 때는 더 센 쪽인 스페셜을 쓴다 —
+     * 둘 다 하면 한 번의 실패로 아이템을 셋이나 태운다.
+     */
+    private suspend fun handleFailure(): Boolean {
+        fails++
+        if (usesPremium && fails % 30 == 0) {
+            onLog("  연속 실패 $fails 회 — 스페셜 레벨업으로 한 번 간다")
+            publish("levelup")
+            return selectUpItem(Judge.UpItem.SPECIAL)
+        }
+        if (usesPremium && fails % 10 == 0) {
+            onLog("  연속 실패 $fails 회 — 마이너스로 한 칸 내렸다가 다시 올린다")
+            publish("levelup")
+            if (!doLevelDown()) return false
+            // 내린 뒤 다시 올리는 것까지가 한 세트다. 여기서 올려두지 않으면
+            // 다음 사이클이 한 칸 낮은 레벨에서 굴러 목표까지 한 칸이 밀린다.
+            if (!selectUpItem(Judge.UpItem.PREMIUM)) return false
+            return true
+        }
+        publish("desak")
+        if (!desak()) return false
+        // 즐겨찾기는 서버에 남아 데삭 후에도 유지된다. 대상 지정을 다시 할 필요가 없다.
+        if (!openDialog()) return false
+        // 데삭은 아이템 선택도 초기화한다. 스페셜이 물린 채로 넘어가지 않게 되돌린다.
+        if (usesPremium && !selectUpItem(Judge.UpItem.PREMIUM)) return false
+        return true
+    }
+
+    /**
+     * 업 아이템을 원하는 것으로 물린다. 이미 그것이면 아무것도 안 한다.
+     *
+     * 사용 아이템 칸을 누르면 '아이템 선택' 창이 뜬다. 거기서 고른 뒤
+     * **칸의 아이콘 색으로 실제로 바뀌었는지 확인한다.** 확인창에는 아이콘이
+     * 없고 제목 글자만 다른데, 프리미엄과 스페셜은 폭이 비슷해 흰 점이 10%
+     * 밖에 차이 안 난다. 그걸로 가르면 언젠가 엉뚱한 것을 쓴다.
+     */
+    private suspend fun selectUpItem(want: Judge.UpItem): Boolean {
+        val now = frame()?.let { Judge.upItem(it) }
+        if (now == want) return true
+
+        tap(tItemSlotUp); delay(2500)
+        if (!waitFor(6000) { Judge.isItemPicker(it) }) {
+            onLog("    ! 아이템 선택 창이 안 떴다")
+            dumpFrame("item-picker")
+            return false
+        }
+        tap(if (want == Judge.UpItem.SPECIAL) tPickSpecial else tPickPremium)
+        delay(2500)
+
+        val after = frame()?.let { Judge.upItem(it) }
+        if (after != want) {
+            onLog("    ! 아이템이 안 바뀌었다 (원한 것 $want, 지금 $after)")
+            dumpFrame("item-select")
+            return false
+        }
+        onLog("    아이템: ${if (want == Judge.UpItem.SPECIAL) "스페셜" else "프리미엄"} 레벨업")
+        return true
+    }
+
+    /**
+     * 마이너스(Lv - 1) 1회.
+     *
+     * 레벨을 한 칸 내리면 그 레벨의 굴림이 다시 열린다. 실패가 쌓였을 때
+     * 내렸다가 다시 올리기 위한 것이다. 게임 설명에 '현재 레벨 이전
+     * 레벨까지만 사용할 수 있다' 고 되어 있어 한 칸씩만 내려간다.
+     *
+     * 확인창이 정말 `Lv - 1` 인지 보고 누른다. 올리려다 내리는 것보다
+     * 내리려다 못 내리는 쪽이 낫다.
+     */
+    private suspend fun doLevelDown(): Boolean {
+        tap(tLevelDown); delay(2500)
+        val f = frame() ?: run { onLog("    ! 화면을 읽지 못했다"); return false }
+        if (!Judge.isMinusDialog(f)) {
+            onLog("    ! 마이너스 확인창이 아니다 — 취소한다")
+            dumpFrame("minus-dialog")
+            tap(tItemCancel); delay(2000)
+            return false
+        }
+        onLog("    마이너스 사용 (Lv -1)")
+        tap(tItemOk); delay(4000)
+        return true
+    }
+
     /** 레벨업 1회. true=트리플맥스, null=중단 */
     private suspend fun doCycle(): Boolean? {
         clearBlockers()   // 루프 도중에도 팝업·시스템 창은 언제든 끼어든다
@@ -898,6 +1002,17 @@ class LoopEngine(
         if (!Judge.isLevelUpDialog(f0)) { abort("사이클 시작 시 레벨업 다이얼로그가 아니다"); return null }
 
         tap(tLevelUp); delay(3000)
+        // 확인창이 마이너스면 누르지 않는다. 레벨 업 자리를 눌렀는데 마이너스
+        // 창이 떴다는 건 좌표가 어긋났다는 뜻이고, 그대로 확인하면 레벨이 내려간다.
+        frame()?.let {
+            if (Judge.isMinusDialog(it)) {
+                onLog("  ! 레벨 업을 눌렀는데 마이너스 창이 떴다 — 취소한다")
+                dumpFrame("wrong-dialog")
+                tap(tItemCancel); delay(2000)
+                abort("아이템 확인창이 예상과 다르다")
+                return null
+            }
+        }
         tap(tItemOk); delay(4000)
 
         if (!waitFor(20000) { Judge.isResultPopup(it) }) {
@@ -1431,6 +1546,12 @@ class LoopEngine(
             // 공지 판정(isNotice)은 여기서 쓰지 않는다. 월드맵 하단도 어두워
             // 오탐이 나고, 그러면 같은 자리를 계속 누르게 된다.
             // 공지는 로그인 직후 문맥에서만 확인한다.
+            // 창마다 X 자리가 다르다. 화면에서 찾는다. 지도가 보이면 이 판정은
+            // 스스로 물러나므로, 메뉴의 빨간 N 배지를 누를 일은 없다.
+            Judge.redCloseButton(f)?.let { cx ->
+                onLog("    창 닫기 (${cx.first},${cx.second})"); tap(cx); delay(3000)
+                return@repeat
+            }
             if (Judge.hasPopupCloseX(f)) {
                 onLog("    팝업 닫기"); tap(tPopupX); delay(2500)
                 return@repeat
@@ -1512,6 +1633,14 @@ class LoopEngine(
                 }
                 Judge.isNotice(f) -> {
                     onLog("    공지 닫기"); tap(tNoticeClose); delay(4000); quiet = 0
+                }
+                // 공지는 여러 개가 줄줄이 뜨고 창마다 X 자리가 다르다.
+                // 고정 좌표로만 찾다가 새 공지창(1970,57)을 못 닫고
+                // 덮인 채로 '게임 준비됨' 으로 넘어갔다. 화면에서 찾는다.
+                Judge.redCloseButton(f) != null -> {
+                    val cx = Judge.redCloseButton(f)!!
+                    onLog("    창 닫기 (${cx.first},${cx.second})")
+                    tap(cx); delay(3000); quiet = 0
                 }
                 Judge.hasPopupCloseX(f) -> {
                     onLog("    팝업 닫기"); tap(tPopupX); delay(2500); quiet = 0
