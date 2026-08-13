@@ -926,8 +926,14 @@ class LoopEngine(
             onLog("  연속 실패 $fails 회 — 마이너스로 한 칸 내렸다가 다시 올린다")
             publish("levelup")
             if (!doLevelDown()) return false
-            // 내린 뒤 다시 올리는 것까지가 한 세트다. 여기서 올려두지 않으면
-            // 다음 사이클이 한 칸 낮은 레벨에서 굴러 목표까지 한 칸이 밀린다.
+            // 내린 다음은 곧바로 다시 올린다. 그 올리기는 이어지는 사이클이
+            // 하므로, 여기서는 레벨업 창으로 돌아와 있는지만 확인하면 된다.
+            // 결과창이 덮은 채로 넘기면 다음 사이클이 '레벨업 다이얼로그가
+            // 아니다' 로 멈춘다 — 실제로 그렇게 끊겼다.
+            if (frame()?.let { Judge.isLevelUpDialog(it) } != true) {
+                onLog("    마이너스 뒤 레벨업 창이 아니다 — 다시 연다")
+                if (!openDialog()) return false
+            }
             if (!selectUpItem(Judge.UpItem.PREMIUM)) return false
             return true
         }
@@ -992,6 +998,18 @@ class LoopEngine(
         }
         onLog("    마이너스 사용 (Lv -1)")
         tap(tItemOk); delay(4000)
+
+        // 레벨업과 마찬가지로 결과창이 뜬다. 그 확인을 안 누르면 창이 덮은 채로
+        // 다음 단계가 굴러가고, 이어지는 아이템 선택이 그 위로 탭을 날린다.
+        // 결과창은 늦게 뜰 수 있으니 기다렸다가 누른다.
+        if (waitFor(12000) { Judge.isResultPopup(it) }) {
+            val lv = frame()?.let { Judge.levelUpLevel(it) }
+            onLog("    마이너스 결과 확인${if (lv != null) " (Lv.$lv)" else ""}")
+            tap(tResultOk); delay(3000)
+        } else {
+            // 안 뜨는 경우도 있을 수 있다. 덮인 창이 없으면 그대로 진행한다.
+            onLog("    마이너스 결과창 없음 — 그대로 진행")
+        }
         return true
     }
 
