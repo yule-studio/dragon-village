@@ -62,6 +62,7 @@ class LoopService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        attachLogFile(applicationContext)
         if (intent?.action == ACTION_STOP) {
             log("정지 요청 — 루프와 화면 공유를 멈춘다")
             stopEverything()
@@ -254,11 +255,36 @@ class LoopService : Service() {
 
         private val logs = ArrayDeque<String>()
 
+        /**
+         * 파일 로그.
+         *
+         * 이 기기는 `adb logcat` 이 아예 비어 있어(삼성 제한) 로그를 밖에서
+         * 읽을 방법이 없었다. 그래서 루프가 무엇을 하다 멈췄는지 매번
+         * 화면 캡처로 추측해야 했고, 그러다 원인을 두 번 잘못 짚었다.
+         * 앱이 직접 파일로 남기면 그냥 읽으면 된다.
+         */
+        @Volatile
+        private var logFile: java.io.File? = null
+
+        fun attachLogFile(ctx: Context) {
+            if (logFile != null) return
+            logFile = runCatching {
+                java.io.File(ctx.getExternalFilesDir(null), "loop.log")
+            }.getOrNull()
+        }
+
         fun log(line: String) {
             Log.i("DvLoop", line)
             synchronized(logs) {
                 logs.addLast(line)
                 while (logs.size > 200) logs.removeFirst()
+            }
+            val f = logFile ?: return
+            runCatching {
+                // 오래 돌면 파일이 커진다. 2MB 를 넘으면 새로 시작한다.
+                if (f.length() > 2_000_000L) f.writeText("")
+                val t = android.text.format.DateFormat.format("MM-dd HH:mm:ss", System.currentTimeMillis())
+                f.appendText("$t  $line\n")
             }
         }
 
