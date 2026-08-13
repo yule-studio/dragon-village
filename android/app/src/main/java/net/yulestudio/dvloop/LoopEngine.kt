@@ -1998,13 +1998,26 @@ class LoopEngine(
         onLog("    로그인 버튼 y=$loginY")
         tap(1170 to loginY); delay(8000)
 
-        if (!waitFor(25000) { Judge.isNotice(it) }) {
-            abort("로그인 후 공지창이 안 뜬다"); return false
+        // 로그인 뒤에 무엇이 뜰지는 그때그때 다르다 — 공지일 수도, 전면광고일
+        // 수도, 곧장 지도일 수도 있다. 공지 하나만 기다리다 **광고가 떴는데도**
+        // '공지창이 안 뜬다' 로 중단했다. 로그인이 됐다는 신호를 넓게 본다.
+        val signedIn = waitFor(30000) {
+            Judge.isNotice(it) ||
+                Judge.adCloseY(it) != null ||
+                Judge.noticeWindowClose(it) != null ||
+                Judge.isGameTopBarVisible(it)
         }
-        repeat(3) {
+        if (!signedIn) {
+            dumpFrame("after-login")
+            abort("로그인 뒤 화면이 바뀌지 않는다"); return false
+        }
+
+        // 무엇이 떴든 걷어낸다. 공지는 자리가 정해져 있어 따로 누르고,
+        // 나머지는 clearBlockers 가 종류별로 확인해서 처리한다.
+        repeat(4) {
             val f = frame() ?: return@repeat
-            if (!Judge.isNotice(f)) return@repeat
-            tap(tNoticeClose); delay(6000)
+            if (Judge.isNotice(f)) { tap(tNoticeClose); delay(5000); return@repeat }
+            clearBlockers()
         }
         onLog("  로그인 완료 (하이브로 확인됨)")
         return true
