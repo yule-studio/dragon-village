@@ -41,9 +41,6 @@ class LoopEngine(
     private val tPickSpecial = 1732 to 532
     private val tLevelDown = 1806 to 930      // 레벨 다운 (Lv - 1 사용)
     private val tItemCancel = 1341 to 786
-
-    /** 지도 오버레이를 걷어낼 때 누르는 빈 하늘. 지역·건물이 없는 자리다. */
-    private val tEmptySky = 500 to 250
     private val tResultOk = 1170 to 827
     private val tDlgX = 2028 to 56
     private val tMenu = 1977 to 88
@@ -1540,14 +1537,6 @@ class LoopEngine(
                 onLog("    지역 창 닫기"); tap(tZoneX); delay(3000)
                 return@repeat
             }
-            // 아르하 입구 오버레이. 설정을 누르려다 지도를 눌러 열린 것이다.
-            // 여기서 한 번 더 누르면 아르하로 들어가버린다 — 루프가 갈 곳이 아니다.
-            // 빈 하늘을 눌러 걷어낸다.
-            if (Judge.isArhaGate(f)) {
-                onLog("    아르하 입구 오버레이 — 들어가지 않고 걷어낸다")
-                tap(tEmptySky); delay(2500)
-                return@repeat
-            }
             // 전체화면 광고. X 가 없고 아래 검정 띠의 '닫기' 만 있다.
             // X 를 찾다가 광고 그림을 눌러 크롬이 열린 적이 있다. 먼저 본다.
             Judge.adCloseY(f)?.let { ay ->
@@ -1695,8 +1684,18 @@ class LoopEngine(
                 dumpFrame("settings-menu")
                 return@repeat
             }
+            // 설정 아이콘 자리는 월드맵의 아르하와 37px 차이다. 메뉴가 열린 것을
+            // 확인했으니 메뉴 패널이 그 자리를 덮고 있지만, 눌러보고 설정이 안
+            // 열렸으면 지도를 눌렀다는 뜻이다. 아르하에 들어갔을 수 있으니
+            // 다음 시도 전에 월드맵으로 되돌린다. 아르하는 루프가 갈 곳이 아니다.
             tap(tSettings); delay(3000)
-            if (frame()?.let { Judge.isSettingsOpen(it) } == true) return true
+            val after = frame()
+            if (after != null && Judge.isSettingsOpen(after)) return true
+            if (after != null && !Judge.isWorldMap(after)) {
+                onLog("    설정이 아니라 지도를 눌렀다 — 월드맵으로 되돌린다")
+                dumpFrame("settings-miss")
+                if (!goToWorldMap()) return false
+            }
             onLog("    설정창 미확인 (${attempt + 1}/3) — 재시도")
         }
         return false
