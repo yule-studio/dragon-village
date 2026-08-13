@@ -734,6 +734,27 @@ object Judge {
         return h to white
     }
 
+    /**
+     * 월드맵에 `아르하의 입구` 오버레이가 떠 있는가.
+     *
+     * 설정 아이콘 (1974,641) 과 월드맵의 아르하 (1977,604) 가 거의 같은 자리다.
+     * 메뉴가 안 열린 채 설정을 누르면 그 탭이 지도로 떨어져 이 오버레이가 열린다.
+     * 좌표가 겹쳐서 금지구역으로는 못 막는다 — 화면을 보고 물러나는 수밖에 없다.
+     *
+     * 노란 `아르하의 입구` 글자로 가른다.
+     * 실측 — 오버레이 148, 월드맵 14~16, 탐험맵 53, 마을 29.
+     */
+    fun isArhaGate(bmp: Bitmap): Boolean {
+        var yellow = 0
+        for (y in 555..659 step 4) {
+            for (x in 1600..1839 step 4) {
+                val c = px(bmp, x, y)
+                if (r(c) > 200 && g(c) > 150 && b(c) < 110) yellow++
+            }
+        }
+        return yellow >= 90
+    }
+
     /** 레벨업 창에 물려 있는 업 아이템. */
     enum class UpItem { PREMIUM, SPECIAL, UNKNOWN }
 

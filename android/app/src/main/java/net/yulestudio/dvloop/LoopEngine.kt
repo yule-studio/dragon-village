@@ -41,6 +41,9 @@ class LoopEngine(
     private val tPickSpecial = 1732 to 532
     private val tLevelDown = 1806 to 930      // 레벨 다운 (Lv - 1 사용)
     private val tItemCancel = 1341 to 786
+
+    /** 지도 오버레이를 걷어낼 때 누르는 빈 하늘. 지역·건물이 없는 자리다. */
+    private val tEmptySky = 500 to 250
     private val tResultOk = 1170 to 827
     private val tDlgX = 2028 to 56
     private val tMenu = 1977 to 88
@@ -1537,6 +1540,14 @@ class LoopEngine(
                 onLog("    지역 창 닫기"); tap(tZoneX); delay(3000)
                 return@repeat
             }
+            // 아르하 입구 오버레이. 설정을 누르려다 지도를 눌러 열린 것이다.
+            // 여기서 한 번 더 누르면 아르하로 들어가버린다 — 루프가 갈 곳이 아니다.
+            // 빈 하늘을 눌러 걷어낸다.
+            if (Judge.isArhaGate(f)) {
+                onLog("    아르하 입구 오버레이 — 들어가지 않고 걷어낸다")
+                tap(tEmptySky); delay(2500)
+                return@repeat
+            }
             // 전체화면 광고. X 가 없고 아래 검정 띠의 '닫기' 만 있다.
             // X 를 찾다가 광고 그림을 눌러 크롬이 열린 적이 있다. 먼저 본다.
             Judge.adCloseY(f)?.let { ay ->
@@ -1662,17 +1673,38 @@ class LoopEngine(
         return false
     }
 
-    /** 설정창을 열어 저장만 한다 (다이얼로그 복귀 없이). */
-    private suspend fun saveOnly(): Boolean {
-        var ok = false
+    /**
+     * 설정창을 연다.
+     *
+     * 예전에는 메뉴 버튼과 설정 아이콘을 연달아 눌렀다. 메뉴 버튼은 토글이라
+     * 이미 열려 있으면 첫 탭이 닫아버리고, 이어지는 설정 탭이 **지도로 떨어진다.**
+     * 설정 아이콘 자리는 월드맵의 아르하 쪽이라 `아르하의 입구` 오버레이가 열리고,
+     * 그 뒤로 루프가 동굴과 월드맵을 헤맸다. 실기기에서 그대로 재현했다.
+     *
+     * 메뉴가 열린 것을 보고 나서 설정을 누른다.
+     */
+    private suspend fun openSettings(): Boolean {
         repeat(3) { attempt ->
-            tap(tMenu); delay(2000)
+            clearBlockers()
+            for (t in 1..3) {
+                if (frame()?.let { Judge.isMenuOpen(it) } == true) break
+                tap(tMenu); delay(2500)
+            }
+            if (frame()?.let { Judge.isMenuOpen(it) } != true) {
+                onLog("    메뉴가 안 열린다 (${attempt + 1}/3)")
+                dumpFrame("settings-menu")
+                return@repeat
+            }
             tap(tSettings); delay(3000)
-            frame()?.let { if (Judge.isSettingsOpen(it)) ok = true }
-            if (ok) return@repeat
+            if (frame()?.let { Judge.isSettingsOpen(it) } == true) return true
             onLog("    설정창 미확인 (${attempt + 1}/3) — 재시도")
         }
-        if (!ok) { abort("설정창 검증 3회 실패"); return false }
+        return false
+    }
+
+    /** 설정창을 열어 저장만 한다 (다이얼로그 복귀 없이). */
+    private suspend fun saveOnly(): Boolean {
+        if (!openSettings()) { abort("설정창 검증 3회 실패"); return false }
         tap(tSaveSafe); delay(3000)
         tap(tSaveOk); delay(2000)
         tap(tSetX); delay(2000)
@@ -1741,15 +1773,7 @@ class LoopEngine(
         tap(tDlgX); delay(2000)
         frame()?.let { if (Judge.isLevelUpDialog(it)) { tap(tDlgX); delay(2000) } }
 
-        var ok = false
-        repeat(3) { attempt ->
-            tap(tMenu); delay(2000)
-            tap(tSettings); delay(3000)
-            frame()?.let { if (Judge.isSettingsOpen(it)) ok = true }
-            if (ok) return@repeat
-            onLog("    설정창 미확인 (${attempt + 1}/3) — 재시도")
-        }
-        if (!ok) { abort("설정창 검증 3회 실패"); return false }
+        if (!openSettings()) { abort("설정창 검증 3회 실패"); return false }
 
         tap(tSaveSafe); delay(3000)
 
