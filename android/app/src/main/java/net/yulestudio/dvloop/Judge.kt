@@ -138,8 +138,10 @@ object Judge {
      */
     fun adCloseY(bmp: Bitmap): Int? {
         val rows = mutableListOf<Int>()
-        var y = 900
-        while (y <= 1065) {
+        // 900 부터 보던 것을 840 까지 넓혔다. 닫기 줄이 조금만 위에 있으면
+        // 놓쳤다. 19개 화면으로 확인했고 넓혀도 광고 말고는 걸리지 않는다.
+        var y = 840
+        while (y <= 1075) {
             val flanks = intArrayOf(400, 700, 1600, 1900).map { px(bmp, it, y) }
             if (flanks.all { maxOf(r(it), g(it), b(it)) < 25 }) rows.add(y)
             y += 4
@@ -1018,6 +1020,41 @@ object Judge {
      * 게임을 새로 실행하면 이런 팝업이 뜬다. 월드맵에서는 그 자리가
      * 보라/파랑 계열이라 빨강으로 구분된다.
      */
+    /**
+     * `공지 사항` 창이 떠 있으면 닫기 X 자리를 준다. 아니면 null.
+     *
+     * 루프 도중에도 공지가 끼어드는데, 이 창은 닫기 띠도 없고 X 가 (1970,57) 라
+     * 기존 팝업 자리(1873,117)와 다르다. 그렇다고 '화면에서 아무 X 나 찾아
+     * 닫기' 로 하면 안 된다 — 동굴도 상단 아이콘 줄을 가려서 덮은 창으로 보이고,
+     * 실제로 동굴에 들어가자마자 닫아버려 루프가 제자리를 돌았다.
+     *
+     * 그래서 **공지창인 것을 직접 확인한다.** 세 가지가 모두 맞아야 한다 —
+     * 상단 아이콘 줄이 가려져 있고, 가운데 위에 제목 글자가 크게 있고,
+     * 우상단에 빨간 X 가 있다.
+     *
+     * 실측 20화면 — 공지창만 참. 제목 잉크 245 대 동굴 그리드 95 · 동굴 상세 30 ·
+     * 레벨업 11 · 전장 0 · 퀘스트 0. 지도는 잉크가 많아도(탐험맵 237 · 하늘왕국 590)
+     * 상단 아이콘 줄이 보여서 걸러진다.
+     */
+    fun noticeWindowClose(bmp: Bitmap): Pair<Int, Int>? {
+        if (isGameTopBarVisible(bmp)) return null
+
+        var ink = 0
+        for (y in 60..109 step 3) {
+            for (x in 1050..1289 step 3) {
+                val c = px(bmp, x, y)
+                if (minOf(r(c), g(c), b(c)) > 190) ink++
+            }
+        }
+        if (ink < 180) return null
+
+        val box = Locate.blob(
+            bmp, 1900, 20, 2010, 140, step = 5, minCells = 8,
+        ) { r, g, b -> r > 150 && g < 95 && b < 95 } ?: return null
+        if (box.w !in 30..130 || box.h !in 30..130) return null
+        return box.cx to box.cy
+    }
+
     /**
      * 화면을 덮은 창의 빨간 닫기 X 를 찾는다. 없으면 null.
      *
