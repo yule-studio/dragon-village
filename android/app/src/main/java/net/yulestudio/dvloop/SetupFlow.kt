@@ -641,14 +641,18 @@ private fun ConfirmStep(repo: DexRepository, setup: LoopSetup, onStart: () -> Un
             SummaryLine("단계", setup.stage?.label ?: "-")
             SummaryLine("현재", "Lv.${setup.currentLevel} · 등급 ${String.format("%.1f", setup.currentGrade)}")
             SummaryLine("목표 레벨", "Lv.${setup.targetLevel}")
-            if (setup.kind == LoopKind.EXPLORE) {
+            // 하한은 시작 전에 눈으로 확인할 수 있어야 한다. 요약에 안 보이면
+            // 잘못 넣어도 모른 채 몇 시간을 돌린다. 하한을 묻는 루프는 다 적는다.
+            if (setup.kind == LoopKind.EXPLORE || setup.kind == LoopKind.LEVEL_UP) {
                 SummaryLine("등급 하한", "${String.format("%.1f", setup.minGrade)} 아래로 안 내려감")
                 SummaryLine("데삭 기준", "마이너스 ${setup.minusBudget} 개")
+            }
+            if (setup.kind == LoopKind.EXPLORE) {
                 SummaryLine("탐험지", "레벨에 맞는 곳으로 자동 이동")
             } else {
                 SummaryLine(
                     "사용 아이템",
-                    if (setup.stage?.awakened == true) "각성 전용 레벨업 +1" else "일반 레벨업 +1",
+                    if (setup.stage?.awakened == true) "각성 전용 레벨업 +1" else "프리미엄 레벨업 +1 (막히면 스페셜)",
                 )
             }
         }
