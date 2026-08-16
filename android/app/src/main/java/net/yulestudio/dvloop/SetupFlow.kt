@@ -428,12 +428,12 @@ private fun CurrentStep(level: Int, grade: Double, onNext: (Int, Double) -> Unit
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            StepperButton("−") { if (gr > 1.0) gr = ((gr - 0.1) * 10).toInt() / 10.0 }
+            StepperButton("−") { if (gr > 1.0) gr = Math.round((gr - 0.1) * 10) / 10.0 }
             Text(String.format("%.1f", gr), fontSize = 30.sp,
                 fontWeight = FontWeight.Bold, color = Blue,
                 modifier = Modifier.weight(1f),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            StepperButton("+") { if (gr < 7.0) gr = ((gr + 0.1) * 10).toInt() / 10.0 }
+            StepperButton("+") { if (gr < 7.0) gr = Math.round((gr + 0.1) * 10) / 10.0 }
         }
         Spacer(Modifier.height(10.dp))
         Text(
@@ -473,8 +473,9 @@ private fun FloorStep(
             fontWeight = FontWeight.Bold, color = Ink)
         Spacer(Modifier.height(8.dp))
         Text(
-            "탐험은 레벨업을 고를 수 없어서 등급이 조금씩 흔들려요.\n" +
-                "이 값 아래로만 안 내려가면 그대로 계속 올립니다.",
+            "올리다 보면 등급이 조금씩 흔들려요.\n" +
+                "이 값 아래로만 안 내려가면 그대로 계속 올립니다.\n" +
+                "내려가면 마이너스로 되돌린 뒤 다시 올려요.",
             fontSize = 14.sp, lineHeight = 21.sp, color = Gray,
         )
 
@@ -487,13 +488,16 @@ private fun FloorStep(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            StepperButton("−") { if (fl > 1.0) fl = ((fl - 0.1) * 10).toInt() / 10.0 }
+            // 0.1 을 더하고 빼는 데 자르기(toInt)를 쓰면 제자리에 멈춘다.
+            // 4.1 + 0.1 은 4.1999... 이라 10 배해서 자르면 41 → 다시 4.1 이다.
+            // 실제로 하한을 6.5 로 올리려다 4.1 에서 더 안 올라갔다. 반올림한다.
+            StepperButton("−") { if (fl > 1.0) fl = Math.round((fl - 0.1) * 10) / 10.0 }
             Text(String.format("%.1f", fl), fontSize = 30.sp,
                 fontWeight = FontWeight.Bold, color = Blue,
                 modifier = Modifier.weight(1f),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             StepperButton("+") {
-                if (fl < currentGrade) fl = ((fl + 0.1) * 10).toInt() / 10.0
+                if (fl < currentGrade) fl = Math.round((fl + 0.1) * 10) / 10.0
             }
         }
         Spacer(Modifier.height(10.dp))
