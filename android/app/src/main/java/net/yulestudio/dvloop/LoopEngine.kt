@@ -917,25 +917,30 @@ class LoopEngine(
      */
     private suspend fun handleFailure(): Boolean {
         fails++
-        if (usesPremium && fails % 30 == 0) {
-            onLog("  연속 실패 $fails 회 — 스페셜 레벨업으로 한 번 간다")
-            publish("levelup")
-            return selectUpItem(Judge.UpItem.SPECIAL)
-        }
         if (usesPremium && fails % 10 == 0) {
-            onLog("  연속 실패 $fails 회 — 마이너스로 한 칸 내렸다가 다시 올린다")
+            // 30회는 10의 배수이기도 하다. 겹칠 때는 더 센 스페셜을 쓴다.
+            val special = fails % 30 == 0
+            val itemName = if (special) "스페셜" else "프리미엄"
+
+            // **먼저 되돌린다.** 방금 실패한 레벨업 때문에 등급이 지켜야 할
+            // 하한 아래로 내려가 있다. 그 상태에서 아이템을 쓰면 이미 망가진
+            // 등급 위에 한 칸을 더 얹는 셈이라 아무 의미가 없다.
+            // 예전에는 30회 분기가 되돌리지도 않고 곧바로 스페셜을 물렸다 —
+            // 6.5 가 아닌 상태에서 스페셜을 태웠다.
+            onLog("  연속 실패 $fails 회 — 마이너스로 되돌리고 ${itemName}으로 간다")
             publish("levelup")
             if (!doLevelDown()) return false
-            // 내린 다음은 곧바로 다시 올린다. 그 올리기는 이어지는 사이클이
-            // 하므로, 여기서는 레벨업 창으로 돌아와 있는지만 확인하면 된다.
-            // 결과창이 덮은 채로 넘기면 다음 사이클이 '레벨업 다이얼로그가
-            // 아니다' 로 멈춘다 — 실제로 그렇게 끊겼다.
+
+            // 내린 다음의 올리기는 이어지는 사이클이 한다. 여기서는 레벨업
+            // 창으로 돌아와 있는지만 확인하면 된다. 결과창이 덮은 채로 넘기면
+            // 다음 사이클이 '레벨업 다이얼로그가 아니다' 로 멈춘다.
             if (frame()?.let { Judge.isLevelUpDialog(it) } != true) {
                 onLog("    마이너스 뒤 레벨업 창이 아니다 — 다시 연다")
                 if (!openDialog()) return false
             }
-            if (!selectUpItem(Judge.UpItem.PREMIUM)) return false
-            return true
+            return selectUpItem(
+                if (special) Judge.UpItem.SPECIAL else Judge.UpItem.PREMIUM,
+            )
         }
         publish("desak")
         if (!desak()) return false
