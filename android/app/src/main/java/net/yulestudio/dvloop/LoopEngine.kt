@@ -192,7 +192,8 @@ class LoopEngine(
         onLog(
             "루프 시작: ${setup.dragon?.name} " +
                 "Lv.${setup.currentLevel} → Lv.${setup.targetLevel} " +
-                "(등급 ${String.format("%.1f", setup.currentGrade)} 유지)"
+                "(지금 ${String.format("%.1f", setup.currentGrade)} · " +
+                "${String.format("%.1f", setup.minGrade)} 아래로 안 내려가게)"
         )
 
         if (a11y == null) { abort("접근성 서비스가 꺼져 있다"); return }
@@ -902,6 +903,9 @@ class LoopEngine(
     /** 연속 실패 수. 성공하면 0으로 돌아간다. */
     private var fails = 0
 
+    /** 결과창에서 마지막으로 읽은 등급. 못 읽었으면 null. */
+    private var lastGrade: Double? = null
+
     /** 프리미엄 레벨업을 쓰는 용인가. 각성 용은 각성 Lv+1 을 써서 해당 없다. */
     private val usesPremium = setup.stage?.awakened != true
 
@@ -917,6 +921,31 @@ class LoopEngine(
      */
     private suspend fun handleFailure(): Boolean {
         fails++
+
+        // 등급이 하한 아래로 내려갔으면 **되돌리는 것이 먼저다.**
+        // 그 상태에서 다시 올리면 이미 내려간 등급 위에 한 칸을 더 얹는 셈이라
+        // 아무리 좋은 아이템을 써도 기준으로 돌아오지 않는다.
+        // 지켜야 할 것은 '그 등급 아래로 안 내려가는 것' 하나다.
+        val g = lastGrade
+        if (usesPremium && g != null && g < setup.minGrade - 0.001) {
+            val special = fails % 30 == 0
+            onLog(
+                "  등급 ${String.format("%.1f", g)} < 하한 " +
+                    "${String.format("%.1f", setup.minGrade)} — 마이너스로 되돌린다" +
+                    if (special) " (다음은 스페셜)" else ""
+            )
+            publish("levelup")
+            if (!doLevelDown()) return false
+            if (frame()?.let { Judge.isLevelUpDialog(it) } != true) {
+                onLog("    마이너스 뒤 레벨업 창이 아니다 — 다시 연다")
+                if (!openDialog()) return false
+            }
+            lastGrade = null   // 되돌린 뒤 등급은 다음 결과창에서 다시 읽는다
+            return selectUpItem(
+                if (special) Judge.UpItem.SPECIAL else Judge.UpItem.PREMIUM,
+            )
+        }
+
         if (usesPremium && fails % 10 == 0) {
             // 30회는 10의 배수이기도 하다. 겹칠 때는 더 센 스페셜을 쓴다.
             val special = fails % 30 == 0
@@ -1047,13 +1076,27 @@ class LoopEngine(
         val triple = res.values.all { it }
         val grade = Judge.gradeIs70(f)
 
-        // 등급은 누적 평균이라 트리플 맥스면 지금 등급이 그대로 유지된다.
-        // 하나라도 놓치면 떨어진다. 그래서 판정 기준은 뱃지 3개다.
-        val win = triple
+        // 결과창에 찍힌 실제 등급을 읽는다.
+        //
+        // 예전에는 뱃지 3개만 보고 판정하고 로그에는 늘 '7.0' 을 찍었다.
+        // 6.5 를 지키는 용인데도 7.0 이라고 적혀 무엇이 잘못됐는지 늦게 알았다.
+        // 지켜야 할 기준은 설정에 들어온 값이고, 그 아래로 안 내려가면 된다.
+        val (readNow, gradeRaw) = Judge.readGrade(f)
+        if (readNow != null) lastGrade = readNow
+        val floor = setup.minGrade
+        val ok = readNow != null && readNow >= floor - 0.001
+
+        // 등급을 읽었으면 그것으로 판정한다. 못 읽었을 때만 뱃지로 대신한다 —
+        // 뱃지 3개면 등급이 그대로 유지되기 때문이다.
+        val win = if (readNow != null) ok else triple
 
         val mark = res.entries.joinToString(" ") { "${it.key}${if (it.value) "O" else "X"}" }
-        val gtxt = when (grade) { true -> "7.0"; false -> "7.0미만"; null -> "등급판정불가" }
-        onLog("사이클 $cycle: $mark / $gtxt → ${if (win) "★트리플맥스★" else "실패"}")
+        val gtxt = readNow?.let { String.format("%.1f", it) }
+            ?: "등급판정불가${gradeRaw?.let { " ($it)" } ?: ""}"
+        onLog(
+            "사이클 $cycle: $mark / $gtxt " +
+                "(하한 ${String.format("%.1f", floor)}) → ${if (win) "유지" else "하한 아래"}"
+        )
 
         // 7.0 을 지키는 경우에만 색으로 교차검증이 가능하다.
         // 뱃지는 MAX 인데 시안이 아니면 판정 모델이 틀린 것이므로 저장하지 않고 멈춘다.

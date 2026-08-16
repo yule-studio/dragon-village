@@ -105,9 +105,14 @@ fun SetupFlow(
     var step by remember { mutableStateOf(0) }
     var setup by remember { mutableStateOf(LoopSetup(kind = kind)) }
 
-    // 탐험 루프는 등급 하한을 따로 묻는다. 그만큼 단계가 하나 늘어난다.
+    // 탐험 루프와 레벨업 루프는 등급 하한을 따로 묻는다. 그만큼 단계가 하나 는다.
+    //
+    // 레벨업도 하한이 필요하다. 예전에는 지금 등급을 그대로 지키는 것만 했는데,
+    // 6.9 인 용을 6.5 까지 허용하며 올리고 싶은 경우가 있다. 하한이 없으면
+    // 조금만 떨어져도 실패로 보고 되돌리느라 진도가 안 나간다.
+    val asksFloor = kind == LoopKind.EXPLORE || kind == LoopKind.LEVEL_UP
     val titles = remember(kind) {
-        if (kind == LoopKind.EXPLORE)
+        if (asksFloor)
             listOf("드래곤", "단계", "현재 상태", "등급 하한", "목표 레벨", "확인")
         else
             listOf("드래곤", "단계", "현재 상태", "목표 레벨", "확인")
@@ -119,10 +124,10 @@ fun SetupFlow(
     Column(Modifier.fillMaxSize().background(Color.White).systemBarsPadding()) {
         StepBar(step, titles, onBack = { if (step > 0) step-- else onExit() })
 
-        // 탐험 루프에서만 3번 자리에 '등급 하한' 이 끼어든다.
+        // 하한을 묻는 루프는 3번 자리에 '등급 하한' 이 끼어든다.
         // 그 뒤 단계는 한 칸씩 밀린다.
-        val floorStep = if (kind == LoopKind.EXPLORE) 3 else -1
-        val levelStep = if (kind == LoopKind.EXPLORE) 4 else 3
+        val floorStep = if (asksFloor) 3 else -1
+        val levelStep = if (asksFloor) 4 else 3
 
         when (step) {
             0 -> DragonStep(repo, setup.dragon) {
