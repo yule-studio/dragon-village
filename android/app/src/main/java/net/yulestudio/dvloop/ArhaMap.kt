@@ -117,9 +117,9 @@ object ArhaMap {
     val bagClose = 2013 to 58
     val bagSortAll = 430 to 138      // 총합
     val bagSortOrder = 651 to 138    // 내림차순
-    val bagTabOre = 1046 to 77       // 광물 (기본 선택)
-    val bagTabFeather = 1167 to 77
-    val bagTabEtc = 1288 to 77
+    val bagTabGem = 1046 to 77        // 젬
+    val bagTabDecor = 1167 to 77      // 장식 (가운데)
+    val bagTabEtc = 1288 to 77        // 물약·부활회복제
     /** 아이템이 늘어서는 영역. 개수를 여기서 읽는다. */
     val bagListArea = intArrayOf(340, 220, 2010, 1010)
 
@@ -140,6 +140,53 @@ object ArhaMap {
      *    탭을 누르려다 가방이 닫혀서 확인하지 못했다.
      */
     const val REVIVE_TARGET = 60
+
+    // ---------------- 모으는 기준 (2026-08-17 사용자 지정) ----------------
+
+    /**
+     * 아르하 젬은 무제한으로 나온다. +37 과 +38 두 종류가 있다.
+     * 방어 · 공격 · 체력 각각 **최소 100개**, **최대 300개**.
+     * 100개를 넘기면 그 종류는 그만 두고 다른 것을 모은다.
+     */
+    const val GEM_MIN = 100
+    const val GEM_MAX = 300
+    val gemKinds = listOf("방어", "공격", "체력")
+
+    /**
+     * 물약도 젬과 같다 — **최소 100개, 최대 300개.**
+     * 다만 **부활회복제는 예외다.** 그건 60개가 상한이라 따로 센다.
+     */
+    const val POTION_MIN = 100
+    const val POTION_MAX = 300
+
+    /**
+     * 장식은 가방 가운데 탭이고 **200칸이 상한**이다. 화면에 `2/200` 처럼 찍힌다.
+     * 차면 편집 → 버리기로 덜어내야 더 모을 수 있다.
+     *
+     * 무엇을 남기고 무엇을 버릴지는 아래 균형을 맞추는 쪽으로 정한다.
+     *   어둠의 뿔 : 빛의 뿔 = 50 : 50
+     *   보주 세 종류 = 30 : 30 : 30, 남는 10칸은 아무거나
+     *
+     * 어둠의 봉인지에서 뿔이 나온다.
+     */
+    const val DECOR_MAX = 200
+    const val HORN_EACH = 50          // 어둠의 뿔 · 빛의 뿔
+    const val ORB_EACH = 30           // 보주 세 종류
+    const val ORB_FREE = 10           // 나머지는 아무거나
+
+    // ---------------- 가방 편집 (2026-08-17 실측) ----------------
+
+    /**
+     * 장식 탭에만 `편집` 버튼이 있다. 누르면 같은 자리가 `버리기` 로 바뀌고,
+     * 칸을 골라 버릴 수 있는 상태가 된다.
+     *
+     * ⬜ 칸을 고르는 것과 실제로 버리는 것은 아직 안 해봤다. 지금 가진 두 개가
+     *    모아야 할 것이라 진짜로 버릴 수 없었다. 200칸이 찬 뒤에 확인한다.
+     */
+    val bagEdit = 1824 to 135         // 편집 / 버리기 (같은 자리)
+    val bagCount = 1573 to 135        // `2/200`
+    val bagCell1 = 509 to 421
+    val bagCellStep = 328
     val bagCell1Count = 604 to 553    // `1/60` 이 찍히는 자리
     val bagCell1Name = 503 to 293
     val bagCellStepX = 352            // 칸 간격 (첫 칸 363 → 둘째 715)
