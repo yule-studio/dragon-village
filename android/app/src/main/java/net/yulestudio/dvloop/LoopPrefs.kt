@@ -109,19 +109,44 @@ class LoopPrefs(ctx: Context) {
             .split(";").filter { it.isNotBlank() }
             .mapNotNull { row ->
                 val f = row.split(":")
-                if (f.size != 3) return@mapNotNull null
+                if (f.size < 3) return@mapNotNull null
                 val no = f[0].toIntOrNull() ?: return@mapNotNull null
                 val target = f[2].toIntOrNull() ?: return@mapNotNull null
-                QueueItem(no, f[1], target)
+                // 예전에는 셋만 저장해서 등급과 하한을 잃었다. 줄을 서 있던
+                // 용이 7.0 기준으로 돌아가 엉뚱하게 판정됐다. 값이 없으면
+                // 예전처럼 7.0 으로 두되, 새로 담는 것은 다 싣는다.
+                QueueItem(
+                    no = no,
+                    stage = f[1],
+                    target = target,
+                    grade = f.getOrNull(3)?.toDoubleOrNull() ?: 7.0,
+                    floor = f.getOrNull(4)?.toDoubleOrNull() ?: 7.0,
+                    level = f.getOrNull(5)?.toIntOrNull() ?: 1,
+                )
             }
         set(v) = p.edit().putString(
-            KEY_QUEUE, v.joinToString(";") { "${it.no}:${it.stage}:${it.target}" },
+            KEY_QUEUE,
+            v.joinToString(";") {
+                "${it.no}:${it.stage}:${it.target}:${it.grade}:${it.floor}:${it.level}"
+            },
         ).apply()
 
     fun enqueue(setup: LoopSetup) {
         val no = setup.dragon?.no ?: return
         val stage = setup.stage?.name ?: return
-        queue = queue + QueueItem(no, stage, setup.targetLevel)
+        queue = queue + QueueItem(
+            no = no,
+            stage = stage,
+            target = setup.targetLevel,
+            grade = setup.currentGrade,
+            floor = setup.minGrade,
+            level = setup.currentLevel,
+        )
+    }
+
+    /** 대기열을 통째로 비운다. 다중 설정을 다시 짤 때 쓴다. */
+    fun clearQueue() {
+        queue = emptyList()
     }
 
     /** 맨 앞을 꺼내 지금 설정으로 올린다. 비어 있으면 null. */
@@ -134,8 +159,9 @@ class LoopPrefs(ctx: Context) {
         return LoopSetup(
             dragon = dragon,
             stage = stage,
-            currentLevel = 1,
-            currentGrade = 7.0,
+            currentLevel = head.level,
+            currentGrade = head.grade,
+            minGrade = head.floor,
             targetLevel = head.target,
             kind = LoopKind.LEVEL_UP,
         )
@@ -143,7 +169,14 @@ class LoopPrefs(ctx: Context) {
 
     fun clear() = p.edit().clear().apply()
 
-    data class QueueItem(val no: Int, val stage: String, val target: Int)
+    data class QueueItem(
+        val no: Int,
+        val stage: String,
+        val target: Int,
+        val grade: Double = 7.0,
+        val floor: Double = 7.0,
+        val level: Int = 1,
+    )
 
     private companion object {
         const val KEY_NO = "dragon_no"

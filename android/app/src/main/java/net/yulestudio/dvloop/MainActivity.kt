@@ -17,7 +17,10 @@ import androidx.compose.ui.graphics.Color
 
 const val GAME_PKG = "com.highbrow.game"
 
-private enum class Screen { LOGIN, MENU, SETUP }
+private enum class Screen { LOGIN, MENU, SETUP, MULTI_COUNT, MULTI }
+
+/** 다중 레벨업에 한 번에 담을 수 있는 마릿수. */
+private const val MULTI_MAX = 5
 
 class MainActivity : ComponentActivity() {
 
@@ -57,6 +60,10 @@ class MainActivity : ComponentActivity() {
                 // 설정을 마쳤을 때 지금 대상으로 삼을지, 대기열에 넣을지
                 var appendToQueue by remember { mutableStateOf(false) }
                 var queueVersion by remember { mutableStateOf(0) }
+                // 다중 레벨업으로 담는 중인 대상들. 비어 있으면 다중 모드가 아니다.
+                var multi by remember { mutableStateOf(false) }
+                var multiTarget by remember { mutableStateOf(0) }
+                var picked by remember { mutableStateOf(listOf<LoopSetup>()) }
                 // 권한은 설정 화면에 다녀오면 바뀔 수 있다. 화면이 돌아올 때마다 다시 본다.
                 var canOverlay by remember { mutableStateOf(hasOverlay()) }
                 LaunchedEffect(screen) { canOverlay = hasOverlay() }
@@ -85,12 +92,23 @@ class MainActivity : ComponentActivity() {
                                 kind = LoopKind.LEVEL_UP
                                 screen = Screen.SETUP
                             },
-                            onPick = { picked ->
+                            onPick = { chosen ->
                                 when {
                                     // 미션은 대상 드래곤이 필요 없다. 바로 돈다.
-                                    picked == LoopKind.MISSION ->
+                                    chosen == LoopKind.MISSION ->
                                         startLoop(LoopSetup(kind = LoopKind.MISSION))
-                                    picked.ready -> { kind = picked; screen = Screen.SETUP }
+                                    chosen == LoopKind.MULTI_LEVEL_UP -> {
+                                        multi = true
+                                        multiTarget = 0
+                                        picked = emptyList()
+                                        kind = LoopKind.LEVEL_UP
+                                        screen = Screen.MULTI_COUNT
+                                    }
+                                    chosen.ready -> {
+                                        multi = false
+                                        kind = chosen
+                                        screen = Screen.SETUP
+                                    }
                                 }
                             },
                             onLogout = { creds.clear(); screen = Screen.LOGIN },
@@ -101,14 +119,52 @@ class MainActivity : ComponentActivity() {
                             kind = kind,
                             onExit = { screen = Screen.MENU },
                             onStart = { setup ->
-                                if (appendToQueue) {
-                                    // 지금 도는 것을 건드리지 않고 줄만 세운다
-                                    prefs.enqueue(setup)
-                                    appendToQueue = false
+                                when {
+                                    // 다중은 다 담을 때까지 시작하지 않는다.
+                                    multi -> {
+                                        picked = picked + setup
+                                        screen = Screen.MULTI
+                                    }
+                                    appendToQueue -> {
+                                        // 지금 도는 것을 건드리지 않고 줄만 세운다
+                                        prefs.enqueue(setup)
+                                        appendToQueue = false
+                                        queueVersion++
+                                        screen = Screen.MENU
+                                    }
+                                    else -> {
+                                        prefs.save(setup)
+                                        startLoop(setup)
+                                        screen = Screen.MENU
+                                    }
+                                }
+                            },
+                        )
+
+                        Screen.MULTI_COUNT -> MultiCount(
+                            max = MULTI_MAX,
+                            onPick = { n -> multiTarget = n; screen = Screen.SETUP },
+                            onBack = { multi = false; screen = Screen.MENU },
+                        )
+
+                        Screen.MULTI -> MultiReview(
+                            picked = picked,
+                            max = multiTarget.coerceIn(1, MULTI_MAX),
+                            onAdd = { screen = Screen.SETUP },
+                            onBack = { multi = false; screen = Screen.MENU },
+                            onStart = {
+                                val list = picked
+                                if (list.isNotEmpty()) {
+                                    // 앞엣것을 지금 대상으로 올리고 나머지는 줄을 세운다.
+                                    // 이전 대기열은 지운다 — 남겨두면 이번에 짠 순서
+                                    // 뒤에 예전 것이 붙어 엉뚱한 용이 이어진다.
+                                    prefs.clearQueue()
+                                    prefs.save(list.first())
+                                    list.drop(1).forEach { prefs.enqueue(it) }
                                     queueVersion++
-                                } else {
-                                    prefs.save(setup)
-                                    startLoop(setup)
+                                    multi = false
+                                    picked = emptyList()
+                                    startLoop(list.first())
                                 }
                                 screen = Screen.MENU
                             },

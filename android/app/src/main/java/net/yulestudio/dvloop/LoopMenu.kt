@@ -32,7 +32,12 @@ enum class LoopKind(
 ) {
     LEVEL_UP(
         "레벨업 루프",
-        "7.0 을 지키며 목표 레벨까지 올려요",
+        "등급 하한을 지키며 목표 레벨까지 올려요",
+        true,
+    ),
+    MULTI_LEVEL_UP(
+        "다중 레벨업",
+        "최대 3마리를 한 번에 걸어두고 차례로 올려요",
         true,
     ),
     EXPLORE(
