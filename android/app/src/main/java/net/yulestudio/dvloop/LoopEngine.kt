@@ -269,6 +269,7 @@ class LoopEngine(
 
         publish("arha")
         if (!goToArha()) return
+        checkArhaBag()
         for (seal in ArhaMap.Seal.entries) {
             if (LoopStatus.stopRequested || abortReason != null) break
             onLog("  [${seal.label}]")
@@ -358,6 +359,35 @@ class LoopEngine(
         }
         LoopStatus.update(LoopStatus.current.copy(running = false, phase = "idle"))
         FloatingService.refresh(ctx)
+    }
+
+    /**
+     * 시작할 때 아르하 가방을 먼저 본다.
+     *
+     * 어디부터 돌지는 지금 무엇이 얼마나 있는지에 달렸다. 그걸 모르고
+     * 순서대로 돌면 이미 다 찬 봉인지에서 시간을 버린다.
+     *
+     * 가방은 **매주 수요일 12시에 초기화된다.** 그래서 우리가 세어둔 수를
+     * 믿으면 안 되고 화면에 찍힌 것을 봐야 한다.
+     *
+     * ⬜ 개수를 숫자로 읽는 것은 아직 안 붙였다. 지금은 화면을 남겨
+     *    사람이 볼 수 있게만 한다. 판독이 붙으면 여기서 건너뛸 봉인지를 고른다.
+     */
+    private suspend fun checkArhaBag() {
+        onLog("  가방을 먼저 본다")
+        tap(ArhaMap.bag); delay(4000)
+        val f = frame()
+        if (f == null || Judge.isArhaSeal(f)) {
+            // 봉인지 창이 열렸다면 가방이 아니라 봉인지를 누른 것이다
+            onLog("    ! 가방이 안 열렸다 — 건너뛴다")
+            frame()?.let { if (Judge.isArhaSeal(it)) { tap(ArhaMap.closeX); delay(2500) } }
+            return
+        }
+        dumpFrame("arha-bag-gem")
+        tap(ArhaMap.bagTabEtc); delay(3000)
+        dumpFrame("arha-bag-etc")
+        onLog("    가방 화면을 남겼다 (젬 · ETC)")
+        tap(ArhaMap.bagClose); delay(3000)
     }
 
     private enum class ArhaResult { DONE, RAID, FAILED }
