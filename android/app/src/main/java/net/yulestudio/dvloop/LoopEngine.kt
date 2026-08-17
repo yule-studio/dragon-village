@@ -267,6 +267,7 @@ class LoopEngine(
         if (!waitForGameReady()) return
 
         publish("arha")
+        if (!goToArha()) return
         for (seal in ArhaMap.Seal.entries) {
             if (LoopStatus.stopRequested || abortReason != null) break
             onLog("  [${seal.label}]")
@@ -288,6 +289,36 @@ class LoopEngine(
     }
 
     private enum class ArhaResult { DONE, RAID, FAILED }
+
+    /**
+     * 아르하 지도까지 간다.
+     *
+     * 이게 없으면 다른 곳에서 시작했을 때 봉인지 좌표가 엉뚱한 데를 누른다.
+     * 월드맵의 아르하는 **누르면 입구가 둘로 펼쳐진다** — 한 번 더 눌러야 들어간다.
+     * (그 자리가 설정 아이콘과 37px 차이라, 반대로 메뉴가 안 열린 채 설정을
+     *  누르면 여기로 들어와 버린다. 그건 openSettings 에서 막는다.)
+     */
+    private suspend fun goToArha(): Boolean {
+        repeat(6) {
+            val f = frame() ?: run { delay(2000); return@repeat }
+            if (Judge.isArhaSeal(f) || Judge.isArhaAutoDone(f)) return true
+
+            // 아르하 지도를 눈으로 가려내려다 마을과 계속 헷갈렸다 (이름표도
+            // 배경도 겹친다). 그림으로 재지 말고 **눌러서 확인한다** —
+            // 봉인지를 눌러 창이 뜨면 아르하에 있는 것이다. 창이 안 뜨면
+            // 아니니 월드맵부터 다시 간다.
+            tap(ArhaMap.Seal.LIGHT.at); delay(3500)
+            frame()?.let { if (Judge.isArhaSeal(it)) { onLog("  아르하 도착"); return true } }
+
+            if (!goToWorldMap()) return false
+            delay(1500)
+            onLog("  아르하로 들어간다")
+            tap(ArhaMap.worldArha); delay(3000)
+            tap(ArhaMap.arhaEnter); delay(5000)
+        }
+        abort("아르하까지 가지 못했다")
+        return false
+    }
 
     /** 한 봉인지를 정해진 시간만큼 자동 탐험으로 돈다. */
     private suspend fun arhaOneSeal(seal: ArhaMap.Seal): ArhaResult {
