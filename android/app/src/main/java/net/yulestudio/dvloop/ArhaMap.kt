@@ -132,6 +132,8 @@ object ArhaMap {
     val explore = 1489 to 359       // 탐험
     val autoExplore = 1433 to 476   // 자동 탐험
     val autoSetting = 1617 to 476   // 자동 탐험 설정 (톱니)
+    val autoStartOk = 988 to 663    // '자동 탐험을 시작하시겠습니까?' 확인
+    val autoStartCancel = 1348 to 663
     val useTicket = 1489 to 594     // 토벌권 사용
     val closeX = 1719 to 87         // 닫기 X — 전체 화면 창의 표준 자리와 다르다
 
@@ -233,6 +235,21 @@ object ArhaMap {
      *
      * 탐험 자체는 다이아를 쓰지 않는다. 한 판 돌려 1,332 그대로인 것을 확인했다.
      */
+    // ---------------- 자동 탐험 (2026-08-17 실측) ----------------
+
+    /**
+     * 자동 탐험이 도는 동안 오른쪽에 뜨는 것들.
+     *
+     * 아이템을 100개씩 모아야 하는데 한 판씩 눌러서는 속도가 안 나온다.
+     * 자동 탐험은 전투까지 게임이 알아서 하므로, 루프는 **켜고 아이템 수를
+     * 지켜보다 목표에 닿으면 끄면 된다.**
+     *
+     * 끄는 것은 `AUTO` 마크를 누르는 것이다.
+     */
+    val autoStop = 1861 to 620        // AUTO — 누르면 자동 탐험 종료
+    val autoCount = 1861 to 738       // `탐험 횟수:6`
+    val autoRaidMark = 1861 to 405    // `레이드발생!` — 레이드가 뜨면 여기 표시
+
     val nextTap = 700 to 900          // 대사 넘기기 (금지구역을 피한 자리)
     val partyDone = 462 to 78         // 선택완료
     val fight = 1745 to 736
