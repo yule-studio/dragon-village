@@ -95,8 +95,11 @@ class MainActivity : ComponentActivity() {
                             onPick = { chosen ->
                                 when {
                                     // 미션은 대상 드래곤이 필요 없다. 바로 돈다.
+                                    // 대상 드래곤이 필요 없는 루프는 바로 돈다.
                                     chosen == LoopKind.MISSION ->
                                         startLoop(LoopSetup(kind = LoopKind.MISSION))
+                                    chosen == LoopKind.ARHA_SEAL ->
+                                        startLoop(LoopSetup(kind = LoopKind.ARHA_SEAL))
                                     chosen == LoopKind.MULTI_LEVEL_UP -> {
                                         multi = true
                                         multiTarget = 0

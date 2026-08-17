@@ -769,6 +769,236 @@ object Judge {
         return yellow >= 90
     }
 
+    // ---------------- 아르하 (2026-08-17 실측) ----------------
+
+    /**
+     * 봉인지 창인가. 오른쪽에 파란 버튼 셋(탐험 · 자동 탐험 · 토벌권)이 세로로 있다.
+     * 탐험 버튼 자리만 봐도 충분히 갈린다.
+     * 실측 — 봉인지 창 22/30, 지도 5, 나머지 화면 0.
+     */
+    fun isArhaSeal(bmp: Bitmap): Boolean {
+        var blue = 0
+        for (y in 325..394 step 15) {
+            for (x in 1380..1600 step 40) {
+                val c = px(bmp, x, y)
+                if (b(c) > 150 && b(c) > r(c) + 90 && g(c) < 170) blue++
+            }
+        }
+        return blue >= 15
+    }
+
+    /**
+     * `자동 탐험 완료` 결과창인가. 붉은 리본과 가운데 크림색 판.
+     * 자동 탐험을 끄면 이 창이 뜨고 그동안 얻은 것을 보여준다.
+     * 실측 — 완료창 리본 38 · 크림 72, 다른 화면 크림 최대 10.
+     */
+    fun isArhaAutoDone(bmp: Bitmap): Boolean {
+        var ribbon = 0
+        var cream = 0
+        for (y in 75..134 step 10) {
+            for (x in 760..1559 step 30) {
+                val c = px(bmp, x, y)
+                if (r(c) > 150 && g(c) < 70 && b(c) < 70) ribbon++
+            }
+        }
+        for (y in 200..619 step 40) {
+            for (x in 700..1599 step 60) {
+                val c = px(bmp, x, y)
+                if (r(c) in 151..234 && g(c) in 141..214 && b(c) in 121..199) cream++
+            }
+        }
+        return ribbon >= 12 && cream >= 40
+    }
+
+    /**
+     * 아르하 레이드 편성 화면인가.
+     *
+     * 붉은 START 버튼만 보면 **붉은 전투 연출이 그대로 통과한다** (실측 뱃지 56).
+     * 실제로 그것 때문에 멀쩡히 돌던 자동 탐험을 세 번 껐다.
+     * 레이드 화면에만 있는 두 가지를 함께 본다 — 가진 드래곤 3줄의 주황 타입
+     * 뱃지, 그리고 아래 20개 자리의 큰 흰 숫자.
+     *
+     * 실측 — 레이드 뱃지 40~44 · 숫자 61~62, 불 연출 뱃지 56 · 숫자 0,
+     *        몬스터 편성 뱃지 8 · 숫자 60, 몬스터 FIGHT 뱃지 29 · 숫자 26.
+     */
+    fun isArhaRaid(bmp: Bitmap): Boolean {
+        var badge = 0
+        for (y in intArrayOf(222, 372, 517)) {
+            for (x in 540..1879 step 20) {
+                val c = px(bmp, x, y)
+                if (r(c) > 150 && g(c) in 91..189 && b(c) < 90) badge++
+            }
+        }
+        if (badge < 36) return false
+
+        var num = 0
+        for (y in intArrayOf(740, 754, 768, 880, 894, 908)) {
+            for (x in intArrayOf(509, 655, 801, 948, 1094, 1240, 1386, 1533, 1679, 1825)) {
+                for (dx in intArrayOf(-14, 0, 14)) {
+                    val c = px(bmp, x + dx, y)
+                    if (minOf(r(c), g(c), b(c)) > 195) num++
+                }
+            }
+        }
+        return num >= 45
+    }
+
+    /**
+     * 탐험 중 계산 이벤트인가. 주황 ← 와 빨간 OK 가 오른쪽에 세로로 붙어 있다.
+     * 붉은 것만 보면 전투 연출이 걸리므로 둘을 함께 본다.
+     * 실측 — 계산 화면 ←30 · OK20, 다른 화면은 ← 가 최대 7.
+     */
+    fun isArhaCalc(bmp: Bitmap): Boolean {
+        var back = 0
+        var ok = 0
+        for (y in 415..485 step 10) {
+            for (x in 1420..1525 step 15) {
+                val c = px(bmp, x, y)
+                if (r(c) > 200 && g(c) in 81..199 && b(c) < 150) back++
+            }
+        }
+        for (y in 620..690 step 10) {
+            for (x in 1420..1525 step 15) {
+                val c = px(bmp, x, y)
+                if (r(c) > 180 && g(c) < 160 && b(c) < 140) ok++
+            }
+        }
+        return back >= 14 && ok >= 14
+    }
+
+    // ---- 계산 이벤트 판독 ----
+
+    val ARHA_CALC_OK = 1472 to 653
+    private val CALC_X = intArrayOf(863, 1066, 1269, 1472)
+    private val CALC_Y = intArrayOf(450, 653, 852)
+
+    /**
+     * 숫자 모양. 숫자판에서 뽑았고 식에도 같은 글자체가 쓰인다.
+     *
+     * **글자의 외곽을 잡아 9×12 로 나눈 것이다.** 칸 전체를 격자로 나누면
+     * 같은 숫자도 크기가 달라 모양이 어긋난다 — 처음에 그렇게 해서 1위와
+     * 2위 차이가 1밖에 안 났다. 외곽을 잡으니 여유가 6~13으로 벌어졌다.
+     */
+    private val CALC_DIGITS = mapOf(
+        "000111100001111110011111110111100111111000111111000111111000011111000111111100111011111110001111110000111100" to 0,
+        "111111111111111111111111111111111111111111111111111111111111110111111110111111110111111111111111111111111110" to 1,
+        "000111100011111110111111111011100111011000111000001111000011110001111100111110000111111110111111110111111110" to 2,
+        "001111100011111110111111111011000111000001111000011110000011110000001111011000111111111111011111110000111100" to 3,
+        "000011000000011110000111110000111110001111110001101110011101110011111111111111111000001110000001110000001110" to 4,
+        "011111111011111111011111111011100000011111000011111110000001111011000111011100111111111111011111110000111100" to 5,
+        "000011110000111110001111110011111100111100000111111100111111110111000111111100111011111111001111110000111100" to 6,
+        "111111111111111111111111111000001110000001110000011100000011100000111000000111000001111000001110000000110000" to 7,
+        "000111100011111110111111111111100111111000111011111110011111110111100111111000111111111111011111110001111100" to 8,
+        "001111000011111110111111110111101111111000111011111111001111111000001111001111110011111110011111000011110000" to 9,
+    )
+
+    private fun glyphBox(bmp: Bitmap, x0: Int, x1: Int, y0: Int, y1: Int): IntArray? {
+        var top = -1
+        var bot = -1
+        for (y in y0 until y1) {
+            var on = false
+            var x = x0
+            while (x < x1) { if (minOf(r(px(bmp, x, y)), g(px(bmp, x, y)), b(px(bmp, x, y))) > 190) { on = true; break }; x += 2 }
+            if (on) { if (top < 0) top = y; bot = y }
+        }
+        if (top < 0) return null
+        var left = -1
+        var right = -1
+        for (x in x0 until x1) {
+            var on = false
+            var y = top
+            while (y <= bot) { if (minOf(r(px(bmp, x, y)), g(px(bmp, x, y)), b(px(bmp, x, y))) > 190) { on = true; break }; y += 2 }
+            if (on) { if (left < 0) left = x; right = x }
+        }
+        if (left < 0) return null
+        return intArrayOf(left, right + 1, top, bot + 1)
+    }
+
+    private fun glyphBits(bmp: Bitmap, box: IntArray): String {
+        val sb = StringBuilder()
+        for (j in 0 until 12) {
+            for (i in 0 until 9) {
+                val ax = box[0] + (box[1] - box[0]) * i / 9
+                val bx = maxOf(box[0] + (box[1] - box[0]) * (i + 1) / 9, ax + 1)
+                val ay = box[2] + (box[3] - box[2]) * j / 12
+                val by = maxOf(box[2] + (box[3] - box[2]) * (j + 1) / 12, ay + 1)
+                var n = 0
+                var t = 0
+                for (yy in ay until by) for (xx in ax until bx) {
+                    t++
+                    if (minOf(r(px(bmp, xx, yy)), g(px(bmp, xx, yy)), b(px(bmp, xx, yy))) > 190) n++
+                }
+                sb.append(if (n * 2 > t) '1' else '0')
+            }
+        }
+        return sb.toString()
+    }
+
+    /** 가장 가까운 숫자. 확실히 앞서지 않으면 null — 찍지 않는다. */
+    private fun calcDigit(bits: String): Int? {
+        var best = Int.MAX_VALUE
+        var second = Int.MAX_VALUE
+        var who: Int? = null
+        for ((k, v) in CALC_DIGITS) {
+            var d = 0
+            for (i in bits.indices) if (bits[i] != k[i]) d++
+            if (d < best) { second = best; best = d; who = v } else if (d < second) second = d
+        }
+        return if (second - best >= 5) who else null
+    }
+
+    /** 숫자판을 읽어 숫자별 좌표를 준다. 배치가 매번 섞이므로 매번 읽는다. */
+    fun arhaKeypad(bmp: Bitmap): Map<Int, Pair<Int, Int>>? {
+        val out = HashMap<Int, Pair<Int, Int>>()
+        for (j in CALC_Y.indices) {
+            for (i in CALC_X.indices) {
+                if (i == 3 && j < 2) continue          // ← 와 OK
+                val cx = CALC_X[i]
+                val cy = CALC_Y[j]
+                val box = glyphBox(bmp, cx - 45, cx + 45, cy - 60, cy + 60) ?: return null
+                val d = calcDigit(glyphBits(bmp, box)) ?: return null
+                out[d] = cx to cy
+            }
+        }
+        return if (out.size == 10) out else null
+    }
+
+    /** 식을 읽어 (왼쪽, 연산자, 오른쪽). 못 읽으면 null. */
+    fun arhaEquation(bmp: Bitmap): Triple<Int, Char, Int>? {
+        val runs = ArrayList<IntArray>()
+        var cur = -1
+        var x = 760
+        while (x < 1560) {
+            var on = false
+            var y = 160
+            while (y < 260) { if (minOf(r(px(bmp, x, y)), g(px(bmp, x, y)), b(px(bmp, x, y))) > 190) { on = true; break }; y += 2 }
+            if (on && cur < 0) cur = x
+            else if (!on && cur >= 0) { if (x - cur >= 6) runs.add(intArrayOf(cur, x)); cur = -1 }
+            x += 2
+        }
+        if (runs.size < 4) return null
+
+        val left = ArrayList<Int>()
+        val right = ArrayList<Int>()
+        var op: Char? = null
+        for (rn in runs) {
+            val box = glyphBox(bmp, rn[0], rn[1], 150, 270) ?: continue
+            val h = box[3] - box[2]
+            val w = box[1] - box[0]
+            if (h < 50) {                       // 연산자는 세로가 짧다
+                if (op == null && h > w * 0.6) op = '+'
+                else if (op != null) break      // `=` 뒤는 정답칸이라 멈춘다
+                continue
+            }
+            val d = calcDigit(glyphBits(bmp, box)) ?: return null
+            if (op == null) left.add(d) else right.add(d)
+        }
+        if (left.isEmpty() || right.isEmpty() || op == null) return null
+        return Triple(
+            left.joinToString("").toInt(), op, right.joinToString("").toInt(),
+        )
+    }
+
     /** 레벨업 창에 물려 있는 업 아이템. */
     enum class UpItem { PREMIUM, SPECIAL, UNKNOWN }
 

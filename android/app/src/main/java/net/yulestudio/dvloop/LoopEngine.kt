@@ -188,6 +188,7 @@ class LoopEngine(
     suspend fun run(maxCycles: Int = 1000) {
         if (setup.kind == LoopKind.EXPLORE) { runExplore(); return }
         if (setup.kind == LoopKind.MISSION) { runMission(); return }
+        if (setup.kind == LoopKind.ARHA_SEAL) { runArhaSeal(); return }
 
         onLog(
             "루프 시작: ${setup.dragon?.name} " +
@@ -247,6 +248,145 @@ class LoopEngine(
         LoopStatus.update(LoopStatus.current.copy(running = false, phase = "idle"))
         FloatingService.refresh(ctx)
     }
+
+    // ---------------- 아르하 봉인지 탐험 루프 ----------------
+
+    /**
+     * 봉인지를 자동 탐험으로 돈다. 순서는 빛 → 바람 → 불 → 물 → 땅 → 어둠.
+     *
+     * 한 판씩 눌러서는 아이템 100개를 못 채운다. 자동 탐험은 전투까지 게임이
+     * 알아서 하므로 루프가 할 일은 **켜고 · 끊기면 다시 켜고 · 시간이 되면
+     * 끄고 다음 봉인지로** 가는 것뿐이다.
+     *
+     * 2026-08-17 맥 스크립트로 여섯 봉인지 60분 무인 완주를 확인하고 옮겼다.
+     */
+    private suspend fun runArhaSeal() {
+        onLog("아르하 봉인지 탐험 시작")
+        if (a11y == null) { abort("접근성 서비스가 꺼져 있다"); return }
+        if (!ScreenCapture.isReady) { abort("화면 캡처가 준비되지 않았다"); return }
+        if (!waitForGameReady()) return
+
+        publish("arha")
+        for (seal in ArhaMap.Seal.entries) {
+            if (LoopStatus.stopRequested || abortReason != null) break
+            onLog("  [${seal.label}]")
+            when (arhaOneSeal(seal)) {
+                ArhaResult.RAID -> {
+                    onLog("  레이드 편성 화면 — 20자리를 채워야 한다. 여기서 멈춘다")
+                    dumpFrame("arha-raid")
+                    return
+                }
+                ArhaResult.FAILED -> {
+                    onLog("  [${seal.label}] 자동 탐험을 켜지 못했다 — 다음으로 넘어간다")
+                }
+                ArhaResult.DONE -> Unit
+            }
+        }
+        reachedTarget = abortReason == null
+        LoopStatus.update(LoopStatus.current.copy(running = false, phase = "done"))
+        FloatingService.refresh(ctx)
+    }
+
+    private enum class ArhaResult { DONE, RAID, FAILED }
+
+    /** 한 봉인지를 정해진 시간만큼 자동 탐험으로 돈다. */
+    private suspend fun arhaOneSeal(seal: ArhaMap.Seal): ArhaResult {
+        if (!startAuto(seal)) return ArhaResult.FAILED
+
+        val end = System.currentTimeMillis() + ARHA_MINUTES * 60_000L
+        var miss = 0
+        while (System.currentTimeMillis() < end &&
+            !LoopStatus.stopRequested && abortReason == null
+        ) {
+            delay(20_000)
+            val f = frame() ?: continue
+
+            if (Judge.isArhaRaid(f)) return ArhaResult.RAID
+            if (autoRunning(f)) { miss = 0; continue }
+
+            // 전투 연출이 화면을 덮으면 판정이 잠깐 흔들린다. 한 번 놓쳤다고
+            // 멈춘 것으로 단정하면 멀쩡히 돌던 것을 죽인다 — 실제로 그랬다.
+            if (++miss < 3) continue
+            miss = 0
+
+            when {
+                Judge.isArhaAutoDone(f) -> {
+                    onLog("    자동 탐험 완료창")
+                    tap(ArhaMap.autoDoneOk); delay(4000)
+                }
+                Judge.isHungerPopup(f) -> {
+                    onLog("    배고픔 — 음식을 먹인다")
+                    tap(Judge.hungerOk); delay(3500)
+                }
+                Judge.isArhaCalc(f) -> solveArhaCalc(f)
+            }
+            if (!startAuto(seal)) return ArhaResult.FAILED
+        }
+
+        onLog("    ${ARHA_MINUTES}분 경과 — 자동 탐험을 끈다")
+        tap(ArhaMap.autoStop); delay(5000)
+        frame()?.let { if (Judge.isArhaAutoDone(it)) { tap(ArhaMap.autoDoneOk); delay(3000) } }
+        return ArhaResult.DONE
+    }
+
+    /**
+     * 자동 탐험이 도는 중인가.
+     *
+     * AUTO 마크를 찾는 방식으로 하다가 계속 틀렸다. 전투 섬광이 화면을 덮으면
+     * 그 마크가 하얗게 날아가서, 멀쩡히 돌고 있는데 멈췄다고 판단했다.
+     * 그래서 뒤집었다 — **멈췄을 때 뜨는 화면들을 알아보고, 그중 아무것도
+     * 아니면 돌고 있는 것으로 본다.** 그 화면들은 정적이라 훨씬 잘 잡힌다.
+     */
+    private fun autoRunning(f: Bitmap): Boolean = !(
+        Judge.isArhaAutoDone(f) || Judge.isArhaSeal(f) || Judge.isWorldMap(f) ||
+            Judge.isHungerPopup(f) || Judge.isArhaCalc(f) || Judge.isArhaRaid(f)
+        )
+
+    /** 봉인지를 열고 자동 탐험을 켠다. 이미 돌고 있으면 그대로 둔다. */
+    private suspend fun startAuto(seal: ArhaMap.Seal): Boolean {
+        repeat(10) {
+            val f = frame() ?: run { return@repeat }
+            when {
+                Judge.isArhaAutoDone(f) -> { tap(ArhaMap.autoDoneOk); delay(4000) }
+                // 이미 돌고 있는데 다시 켜려다 실패한 적이 있다. 전투 중이라
+                // 봉인지 창도 지도도 아니어서 헛누르고 포기했다.
+                autoRunning(f) -> return true
+                Judge.isArhaSeal(f) -> {
+                    onLog("    자동 탐험 켬")
+                    tap(ArhaMap.autoExplore); delay(3000)
+                    tap(ArhaMap.autoStartOk); delay(6000)
+                    return true
+                }
+                Judge.isHungerPopup(f) -> { tap(Judge.hungerOk); delay(3000) }
+                else -> { tap(seal.at); delay(4000) }
+            }
+        }
+        return false
+    }
+
+    /**
+     * 탐험 중 계산 이벤트. `30 + 65 = ?` 를 풀어 숫자판으로 넣는다.
+     * **숫자판 배치가 매번 섞이므로** 어느 칸에 어느 숫자가 있는지 매번 읽는다.
+     */
+    private suspend fun solveArhaCalc(f: Bitmap) {
+        val eq = Judge.arhaEquation(f)
+        val pad = Judge.arhaKeypad(f)
+        if (eq == null || pad == null) {
+            onLog("    ! 계산 화면을 못 읽었다 — 찍지 않는다")
+            dumpFrame("arha-calc")
+            return
+        }
+        val (a, op, b) = eq
+        val v = if (op == '+') a + b else a - b
+        onLog("    계산 $a $op $b = $v")
+        for (ch in v.toString()) {
+            pad[ch - '0']?.let { tap(it); delay(1000) }
+        }
+        tap(Judge.ARHA_CALC_OK); delay(3500)
+    }
+
+    /** 한 봉인지에 머무는 시간. 아이템 개수 판독이 붙기 전까지의 기준이다. */
+    private val ARHA_MINUTES = 10
 
     // ---------------- 미션 루프 ----------------
 
