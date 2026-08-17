@@ -318,11 +318,22 @@ object ArhaMap {
     /** 편성 화면의 속성 필터. 봉인지마다 세울 속성이 달라 이걸로 고른다. */
     val filterMy = 466 to 218
     val filterAll = 725 to 218
-    val filterWater = 981 to 218
-    val filterFire = 1108 to 218
-    val filterGrass = 1234 to 218
-    val filterLight = 1361 to 218
-    val filterDark = 1487 to 218
+
+    /**
+     * 속성 필터 여섯 개. 봉인지 이름과 같은 여섯 속성이다.
+     *
+     * 실측으로 확인한 것은 불(1108)과 빛(1361) 둘이다 — 그 자리를 눌렀을 때
+     * 목록이 각각 루가르·스타페이스로 바뀌는 것을 봤다. 나머지 넷은 같은
+     * 간격(126)으로 늘어서 있어 자리를 계산한 것이고, 아직 눌러보지 않았다.
+     */
+    enum class Element(val label: String, val at: Pair<Int, Int>) {
+        EARTH("땅", 854 to 218),
+        WATER("물", 981 to 218),
+        FIRE("불", 1108 to 218),
+        WIND("바람", 1234 to 218),
+        LIGHT("빛", 1361 to 218),
+        DARK("어둠", 1487 to 218),
+    }
 
     /** 편성 카드 첫 칸. 오른쪽으로 이어진다. */
     val partyCard1 = 497 to 527
@@ -334,7 +345,7 @@ object ArhaMap {
      * 틀렸다는 지적을 받았다. 봉인지가 무엇이든 빛과 불이다.
      * (봉인지별로 다른 것은 보스 공략의 앞라인 속성이고, 그건 Seal.front 다.)
      */
-    val monsterFilters = listOf(filterLight, filterFire)
+    val monsterFilters = listOf(Element.LIGHT, Element.FIRE)
 
     /**
      * 봉인지마다 나오는 아이템이 다르다.

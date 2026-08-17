@@ -17,7 +17,7 @@ import androidx.compose.ui.graphics.Color
 
 const val GAME_PKG = "com.highbrow.game"
 
-private enum class Screen { LOGIN, MENU, SETUP, MULTI_COUNT, MULTI }
+private enum class Screen { LOGIN, MENU, SETUP, MULTI_COUNT, MULTI, ARHA_RAID }
 
 /** 다중 레벨업에 한 번에 담을 수 있는 마릿수. */
 private const val MULTI_MAX = 5
@@ -100,6 +100,7 @@ class MainActivity : ComponentActivity() {
                                         startLoop(LoopSetup(kind = LoopKind.MISSION))
                                     chosen == LoopKind.ARHA_SEAL ->
                                         startLoop(LoopSetup(kind = LoopKind.ARHA_SEAL))
+                                    chosen == LoopKind.ARHA_BOSS -> screen = Screen.ARHA_RAID
                                     chosen == LoopKind.MULTI_LEVEL_UP -> {
                                         multi = true
                                         multiTarget = 0
@@ -141,6 +142,20 @@ class MainActivity : ComponentActivity() {
                                         screen = Screen.MENU
                                     }
                                 }
+                            },
+                        )
+
+                        Screen.ARHA_RAID -> ArhaRaidSetup(
+                            onExit = { screen = Screen.MENU },
+                            onStart = { seal, elements ->
+                                startLoop(
+                                    LoopSetup(
+                                        kind = LoopKind.ARHA_BOSS,
+                                        arhaSeal = seal,
+                                        arhaElements = elements,
+                                    )
+                                )
+                                screen = Screen.MENU
                             },
                         )
 

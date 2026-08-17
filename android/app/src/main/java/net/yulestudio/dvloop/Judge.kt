@@ -866,6 +866,36 @@ object Judge {
         return back >= 14 && ok >= 14
     }
 
+    /**
+     * 탐험 중 몬스터 편성 화면인가. 카드 이름의 주황 띠가 여러 개 늘어선다.
+     * 실측 — 편성 25 이상, 다른 화면은 그 아래.
+     */
+    fun isArhaParty(bmp: Bitmap): Boolean {
+        var ribbon = 0
+        for (x in 380..1899 step 20) {
+            val c = px(bmp, x, 306)
+            if (r(c) > 200 && g(c) in 121..214 && b(c) < 110) ribbon++
+        }
+        return ribbon >= 25
+    }
+
+    /**
+     * FIGHT / RUN 화면인가. 오른쪽 붉은 육각형.
+     *
+     * **보스 판정보다 먼저 봐야 한다.** 보스 연출의 붉은 글자와 FIGHT 화면의
+     * 붉은 몬스터가 같은 조건을 통과해서, 보스를 먼저 보면 FIGHT 를 못 누른다.
+     */
+    fun arhaFightAt(bmp: Bitmap): Pair<Int, Int>? {
+        var n = 0
+        for (y in 660..819 step 10) {
+            for (x in 1640..1859 step 15) {
+                val c = px(bmp, x, y)
+                if (r(c) > 150 && g(c) < 85 && b(c) < 85) n++
+            }
+        }
+        return if (n >= 25) 1745 to 736 else null
+    }
+
     // ---- 계산 이벤트 판독 ----
 
     val ARHA_CALC_OK = 1472 to 653

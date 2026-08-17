@@ -93,6 +93,15 @@ data class LoopSetup(
      * 다만 그게 계속 실패하면 마이너스만 축내므로, 이 개수를 넘으면 데삭이 싸다.
      */
     val minusBudget: Int = 5,
+
+    /**
+     * 아르하 레이드 루프에서 돌 봉인지와, 몬스터 전투에서 세울 속성.
+     *
+     * 레이드는 수동 탐험을 해야 나오고, 봉인지마다 유리한 조합이 달라
+     * 빛+불로 고정해두면 다른 봉인지에서 불리해진다. 그래서 설정에서 받는다.
+     */
+    val arhaSeal: ArhaMap.Seal? = null,
+    val arhaElements: List<ArhaMap.Element> = emptyList(),
 )
 
 @Composable

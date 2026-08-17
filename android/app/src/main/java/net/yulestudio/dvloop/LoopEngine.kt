@@ -189,6 +189,7 @@ class LoopEngine(
         if (setup.kind == LoopKind.EXPLORE) { runExplore(); return }
         if (setup.kind == LoopKind.MISSION) { runMission(); return }
         if (setup.kind == LoopKind.ARHA_SEAL) { runArhaSeal(); return }
+        if (setup.kind == LoopKind.ARHA_BOSS) { runArhaRaid(); return }
 
         onLog(
             "루프 시작: ${setup.dragon?.name} " +
@@ -285,6 +286,77 @@ class LoopEngine(
         }
         reachedTarget = abortReason == null
         LoopStatus.update(LoopStatus.current.copy(running = false, phase = "done"))
+        FloatingService.refresh(ctx)
+    }
+
+    /**
+     * 아르하 레이드 루프 — **수동 탐험**으로 레이드를 띄운다.
+     *
+     * 자동 탐험으로는 레이드가 안 걸린다. 그래서 봉인지 탐험 루프와 방식이
+     * 다르다. 한 판씩 눌러 돌면서 몬스터가 나오면 설정에서 고른 속성으로
+     * 편성하고, 레이드가 뜨면 멈춘다 (20자리 편성은 아직 사람이 한다).
+     */
+    private suspend fun runArhaRaid() {
+        val seal = setup.arhaSeal ?: run { abort("봉인지가 정해지지 않았다"); return }
+        val elements = setup.arhaElements
+        onLog("아르하 레이드 시작: ${seal.label} · ${elements.joinToString("+") { it.label }}")
+        if (a11y == null) { abort("접근성 서비스가 꺼져 있다"); return }
+        if (!ScreenCapture.isReady) { abort("화면 캡처가 준비되지 않았다"); return }
+        if (!waitForGameReady()) return
+
+        publish("arha")
+        if (!goToArha()) return
+
+        var rounds = 0
+        var quiet = 0
+        while (rounds < 400 && !LoopStatus.stopRequested && abortReason == null) {
+            val f = frame() ?: run { delay(1500); return@run null } ?: continue
+
+            when {
+                Judge.isArhaRaid(f) -> {
+                    onLog("★ 레이드 출현 — 20자리를 채워야 한다. 여기서 멈춘다")
+                    dumpFrame("arha-raid")
+                    reachedTarget = true
+                    LoopStatus.update(LoopStatus.current.copy(running = false, phase = "done"))
+                    FloatingService.refresh(ctx)
+                    return
+                }
+                Judge.isHungerPopup(f) -> {
+                    onLog("  배고픔 — 음식을 먹인다")
+                    tap(Judge.hungerOk); delay(3500); quiet = 0
+                }
+                Judge.isArhaCalc(f) -> { solveArhaCalc(f); quiet = 0 }
+                Judge.isArhaAutoDone(f) -> {
+                    tap(ArhaMap.autoDoneOk); delay(3000); quiet = 0
+                }
+                Judge.isArhaParty(f) -> {
+                    onLog("  편성 — ${elements.joinToString("+") { it.label }}")
+                    for (e in elements) {
+                        tap(e.at); delay(2500)
+                        tap(ArhaMap.partyCard1); delay(2500)
+                    }
+                    tap(ArhaMap.partyDone); delay(3500); quiet = 0
+                }
+                Judge.arhaFightAt(f) != null -> {
+                    tap(ArhaMap.fight); delay(5000); quiet = 0
+                }
+                Judge.isArhaSeal(f) -> {
+                    rounds++
+                    onLog("  탐험 $rounds")
+                    publish("arha")
+                    tap(ArhaMap.explore); delay(5000); quiet = 0
+                }
+                else -> {
+                    // 대사·연출은 눌러서 넘긴다. 지도로 돌아왔으면 봉인지를 다시 연다.
+                    if (++quiet > 25) {
+                        tap(seal.at); delay(3500); quiet = 0
+                    } else {
+                        tap(ArhaMap.nextTap); delay(1300)
+                    }
+                }
+            }
+        }
+        LoopStatus.update(LoopStatus.current.copy(running = false, phase = "idle"))
         FloatingService.refresh(ctx)
     }
 

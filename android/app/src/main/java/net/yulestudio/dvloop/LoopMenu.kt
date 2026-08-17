@@ -58,9 +58,9 @@ enum class LoopKind(
         true,
     ),
     ARHA_BOSS(
-        "아르하 · 보스 공략",
-        "블리자드 · 다크나이트를 잡아요",
-        false,
+        "아르하 · 레이드",
+        "수동 탐험으로 레이드를 띄워요",
+        true,
     ),
     ARHA_TOWER(
         "아르하 · 증명의 탑",
