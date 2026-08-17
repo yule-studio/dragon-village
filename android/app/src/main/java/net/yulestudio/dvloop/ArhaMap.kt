@@ -75,6 +75,37 @@ object ArhaMap {
     val frontRow = intArrayOf(9, 7, 5, 3, 1, 2, 4, 6, 8, 10)
     val backRow = intArrayOf(19, 17, 15, 13, 11, 12, 14, 16, 18, 20)
 
+    // ---- 레이드 편성 화면 (2026-08-17 이그나 레이드에서 실측) ----
+    //
+    // 탐험을 돌다 레이드가 뜨면 이 화면이 열린다. 위쪽은 가진 드래곤이 3줄 ×
+    // 10칸으로 깔리고, 아래쪽은 세울 자리 20개다. 칸을 고른 뒤 자리를 누른다.
+    //
+    // 자리 번호는 가운데(1·2)에서 바깥으로 번갈아 붙는다. 자료 화면에서 읽은
+    // 배치가 실제와 같았다.
+
+    val raidStart = 614 to 85         // START
+    val raidClose = 1989 to 88
+    val raidBossName = 1158 to 35
+
+    /** 가진 드래곤 칸. 3줄 × 10칸, 가로 간격 146. */
+    val raidGridRows = intArrayOf(269, 419, 564)
+    val raidGridX0 = 509
+    val raidGridStepX = 146
+    fun raidCell(col: Int, row: Int) = (raidGridX0 + raidGridStepX * col) to raidGridRows[row]
+
+    /** 세울 자리. 위가 앞라인(탱커), 아래가 뒷라인(딜러). x 는 칸과 같다. */
+    val raidFrontY = 784
+    val raidBackY = 924
+    fun raidSlot(col: Int, front: Boolean) =
+        (raidGridX0 + raidGridStepX * col) to (if (front) raidFrontY else raidBackY)
+
+    /**
+     * 칸마다 오른쪽 위에 타입 뱃지가 붙는다 —
+     * 공방 · 방어 · 공격 · 체공 · 체력 · 체방 · 중립.
+     * **탱커는 체방 또는 체력이다.** 앞라인에 그것만 세운다.
+     */
+    val raidTankTypes = listOf("체방", "체력")
+
     /**
      * 레이드 세팅 규칙 (증명의 탑 50층 기준과 같다).
      *
