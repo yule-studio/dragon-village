@@ -225,6 +225,9 @@ class LoopEngine(
 
             if (win) {
                 fails = 0
+                // 한 레벨을 넘겼으면 마이너스 예산도 새로 시작한다.
+                // 설정의 '데삭 기준' 은 한 레벨에서 몇 개까지 쓸지를 정한 것이다.
+                minusUsed = 0
                 wins++
                 level++
                 onLog("  누적 성공 $wins  (Lv.$level)")
@@ -1182,6 +1185,22 @@ class LoopEngine(
     /** 프리미엄 레벨업을 쓰는 용인가. 각성 용은 각성 Lv+1 을 써서 해당 없다. */
     private val usesPremium = setup.stage?.awakened != true
 
+    /** 마이너스를 몇 개 썼는가. 설정한 개수를 넘기면 더 쓰지 않는다. */
+    private var minusUsed = 0
+
+    /**
+     * 지금 마이너스를 써도 되는가.
+     *
+     * 설정의 '데삭 기준' 이 그 개수다. **0 이면 한 개도 쓰지 않는다** —
+     * 플러스 아이템만으로 굴리고 하한을 못 지키면 무조건 데삭한다.
+     *
+     * 예전에는 이 설정을 아예 보지 않고 실패 10회마다 무조건 마이너스를 썼다.
+     * 0 으로 맞춰놔도 마이너스가 나갔다. 마이너스는 한 번 쓸 때마다 플러스도
+     * 한 번 더 들어가서, 안 쓰겠다고 정한 사람 입장에서는 아이템이 두 배로 샜다.
+     */
+    private val canUseMinus: Boolean
+        get() = usesPremium && setup.minusBudget > 0 && minusUsed < setup.minusBudget
+
     /**
      * 실패 처리. 계속 돌릴 수 있으면 true.
      *
@@ -1200,7 +1219,7 @@ class LoopEngine(
         // 아무리 좋은 아이템을 써도 기준으로 돌아오지 않는다.
         // 지켜야 할 것은 '그 등급 아래로 안 내려가는 것' 하나다.
         val g = lastGrade
-        if (usesPremium && g != null && g < setup.minGrade - 0.001) {
+        if (canUseMinus && g != null && g < setup.minGrade - 0.001) {
             val special = fails % 30 == 0
             onLog(
                 "  등급 ${String.format("%.1f", g)} < 하한 " +
@@ -1209,6 +1228,7 @@ class LoopEngine(
             )
             publish("levelup")
             if (!doLevelDown()) return false
+            minusUsed++
             if (frame()?.let { Judge.isLevelUpDialog(it) } != true) {
                 onLog("    마이너스 뒤 레벨업 창이 아니다 — 다시 연다")
                 if (!openDialog()) return false
@@ -1219,7 +1239,7 @@ class LoopEngine(
             )
         }
 
-        if (usesPremium && fails % 10 == 0) {
+        if (canUseMinus && fails % 10 == 0) {
             // 30회는 10의 배수이기도 하다. 겹칠 때는 더 센 스페셜을 쓴다.
             val special = fails % 30 == 0
             val itemName = if (special) "스페셜" else "프리미엄"
@@ -1232,6 +1252,7 @@ class LoopEngine(
             onLog("  연속 실패 $fails 회 — 마이너스로 되돌리고 ${itemName}으로 간다")
             publish("levelup")
             if (!doLevelDown()) return false
+            minusUsed++
 
             // 내린 다음의 올리기는 이어지는 사이클이 한다. 여기서는 레벨업
             // 창으로 돌아와 있는지만 확인하면 된다. 결과창이 덮은 채로 넘기면

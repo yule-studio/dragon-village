@@ -524,8 +524,8 @@ private fun FloorStep(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            StepperButton("−") { if (bd > 1) bd-- }
-            Text("마이너스 $bd 개", fontSize = 22.sp,
+            StepperButton("−") { if (bd > 0) bd-- }
+            Text(if (bd == 0) "마이너스 안 씀" else "마이너스 $bd 개", fontSize = 22.sp,
                 fontWeight = FontWeight.Bold, color = Blue,
                 modifier = Modifier.weight(1f),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -533,8 +533,12 @@ private fun FloorStep(
         }
         Spacer(Modifier.height(10.dp))
         Text(
-            "한 레벨에서 마이너스를 이만큼 쓰고도 하한을 못 지키면 데삭합니다.\n" +
-                "그 전까지는 마이너스로 되돌려 다시 올려요.",
+            if (bd == 0)
+                "마이너스를 쓰지 않아요. 플러스 아이템만으로 굴리고\n" +
+                    "하한을 못 지키면 바로 데삭합니다."
+            else
+                "한 레벨에서 마이너스를 이만큼 쓰고도 하한을 못 지키면 데삭합니다.\n" +
+                    "그 전까지는 마이너스로 되돌려 다시 올려요.",
             fontSize = 12.sp, lineHeight = 18.sp, color = Gray,
         )
         Spacer(Modifier.height(24.dp))
@@ -654,7 +658,7 @@ private fun ConfirmStep(repo: DexRepository, setup: LoopSetup, onStart: () -> Un
             // 잘못 넣어도 모른 채 몇 시간을 돌린다. 하한을 묻는 루프는 다 적는다.
             if (setup.kind == LoopKind.EXPLORE || setup.kind == LoopKind.LEVEL_UP) {
                 SummaryLine("등급 하한", "${String.format("%.1f", setup.minGrade)} 아래로 안 내려감")
-                SummaryLine("데삭 기준", "마이너스 ${setup.minusBudget} 개")
+                SummaryLine("데삭 기준", if (setup.minusBudget == 0) "마이너스 안 씀 — 하한 못 지키면 바로 데삭" else "마이너스 ${setup.minusBudget} 개")
             }
             if (setup.kind == LoopKind.EXPLORE) {
                 SummaryLine("탐험지", "레벨에 맞는 곳으로 자동 이동")
